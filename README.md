@@ -28,6 +28,21 @@ As a result, Kubernetes will regularly restart the pod.
 - 80% success rate, 20% random failures  
 - Kubernetes will mark the pod as “NotReady”, preventing traffic routing
 
+### 4. `/chaos/?`- choose failure
+```bash
+# Speicherverbrauch massiv erhöhen (Richtung OOMKill)
+curl -k -X POST https://randomfail.gmk.lan/chaos/oom
+
+# Den Container sofort hart beenden (Simuliert App-Crash)
+curl -k -X POST https://randomfail.gmk.lan/chaos/crash
+
+# Erzeugt für 30 Sekunden 100% Last auf einem CPU-Kern
+curl -k -X POST https://randomfail.gmk.lan/chaos/cpu
+
+# Den Health-Status manuell auf "unhealthy" setzen (Liveness Probe Test)
+curl -k -X POST https://randomfail.gmk.lan/chaos/unhealthy
+```
+
 ---
 
 ## Running Locally
