@@ -30,7 +30,7 @@ def index():
 @app.get("/healthz")
 def healthz():
     # 20% zufällige Fehler
-    if random.random() < 0.2:
+    if random.random() < 0.4:
         return Response("Unhealthy", status_code=500)
     return {"status": "ok"}
 
