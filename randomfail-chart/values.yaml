@@ -1,7 +1,7 @@
 image:
   repository: wlanboy/randomfail
   tag: latest
-  pullPolicy: Always
+  pullPolicy: IfNotPresent
 
 replicaCount: 1
 deploymentName: randomfail

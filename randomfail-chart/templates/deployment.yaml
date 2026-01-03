@@ -26,7 +26,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 1 
-            failureThreshold: 1
+            failureThreshold: 2
           readinessProbe:
             httpGet:
               path: /readyz
@@ -34,7 +34,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 1 
-            failureThreshold: 1
+            failureThreshold: 2
           volumeMounts:
             - name: tmp-volume
               mountPath: {{ .Values.volume.mountPath }}
