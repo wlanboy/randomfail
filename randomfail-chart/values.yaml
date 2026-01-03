@@ -9,8 +9,8 @@ deploymentName: randomfail
 service:
   name: randomfail-svc
   type: ClusterIP
-  port: 2100
-  targetPort: 2100
+  port: 8080
+  targetPort: 8080
 
 pvc:
   enabled: true
