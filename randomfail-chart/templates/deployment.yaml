@@ -25,12 +25,16 @@ spec:
               port: {{ .Values.service.targetPort }}
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 1 
+            failureThreshold: 1
           readinessProbe:
             httpGet:
               path: /readyz
               port: {{ .Values.service.targetPort }}
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 1 
+            failureThreshold: 1
           volumeMounts:
             - name: tmp-volume
               mountPath: {{ .Values.volume.mountPath }}
