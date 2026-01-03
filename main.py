@@ -2,6 +2,8 @@ from fastapi import FastAPI, Response, status
 from fastapi.responses import HTMLResponse
 from datetime import datetime
 import random
+import asyncio 
+import os
 
 app = FastAPI()
 
@@ -38,3 +40,11 @@ def readyz():
     if random.random() < 0.2:
         return Response("Not Ready", status_code=500)
     return {"status": "ready"}
+
+@app.on_event("startup")
+async def schedule_shutdown():
+    asyncio.create_task(crash_timer())
+
+async def crash_timer():
+    await asyncio.sleep(120)
+    os._exit(1)
