@@ -39,6 +39,9 @@ curl -k -X POST https://randomfail.gmk.lan/chaos/crash
 # Erzeugt für 30 Sekunden 100% Last auf einem CPU-Kern
 curl -k -X POST https://randomfail.gmk.lan/chaos/cpu
 
+# Erzeugt für 110 MBit bin file um pvc überlaufen zu lassen
+curl -k -X POST https://randomfail.gmk.lan/chaos/disk
+
 # Den Health-Status manuell auf "unhealthy" setzen (Liveness Probe Test)
 curl -k -X POST https://randomfail.gmk.lan/chaos/unhealthy
 ```

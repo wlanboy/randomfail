@@ -35,6 +35,15 @@ async def root():
 
 # --- CHAOS LOGIK ---
 
+def fill_disk():
+    try:
+        path = "/tmp/chaos_junk.bin"
+        # Schreibt 110 MB an Nullen
+        with open(path, "wb") as f:
+            f.write(os.urandom(110 * 1024 * 1024)) 
+    except IOError as e:
+        print(f"Disk full error as expected: {e}")
+
 def reset_state():
     """Bereinigt den Status für das nächste Intervall."""
     state["is_unhealthy"] = False
@@ -101,3 +110,9 @@ def crash():
 def toggle_health():
     state["is_unhealthy"] = not state["is_unhealthy"]
     return {"is_unhealthy": state["is_unhealthy"]}
+
+@app.post("/chaos/disk")
+async def manual_disk():
+    state["current_scenario"] = "MANUAL_DISK_FILL"
+    threading.Thread(target=fill_disk, daemon=True).start()
+    return {"message": "Disk fill started"}
