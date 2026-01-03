@@ -17,24 +17,35 @@ spec:
         - name: {{ .Values.deploymentName }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           ports:
             - containerPort: {{ .Values.service.targetPort }}
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"  # Bei OOM_PRESSURE wird der Pod hier gekillt
+              cpu: "200m"     # Bei CPU_SPIKE siehst du hier Throttling
+
           livenessProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10 # Etwas mehr Puffer für den App-Start
             periodSeconds: 5
-            timeoutSeconds: 1 
-            failureThreshold: 2
+            timeoutSeconds: 2 
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /readyz
               port: {{ .Values.service.targetPort }}
             initialDelaySeconds: 5
             periodSeconds: 5
-            timeoutSeconds: 1 
-            failureThreshold: 2
+            timeoutSeconds: 2 
+            failureThreshold: 3
           volumeMounts:
             - name: tmp-volume
               mountPath: {{ .Values.volume.mountPath }}
