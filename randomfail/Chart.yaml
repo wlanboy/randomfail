@@ -1,0 +1,6 @@
+apiVersion: v2
+name: randomfail
+description: Container that randomly fails health and readyness checks
+type: application
+version: 0.1.0
+appVersion: "latest"

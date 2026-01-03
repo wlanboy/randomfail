@@ -1,0 +1,43 @@
+image:
+  repository: wlanboy/randomfail
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 1
+deploymentName: randomfail
+
+service:
+  name: randomfail-svc
+  type: ClusterIP
+  port: 2100
+  targetPort: 2100
+
+pvc:
+  enabled: true
+  name: randomfail-tmp-pvc
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  size: "100Mi"
+
+volume:
+  mountPath: /tmp
+
+istio:
+  gatewayName: randomfail-gw
+  gatewayNamespace: "istio-ingress"
+  hosts: 
+    - randomfail.tp.lan
+    - randomfail.gmk.lan
+  tls:
+    enabled: true
+    secretName: randomfail-tls
+
+certManager:
+  enabled: true
+  issuerRef:
+    kind: ClusterIssuer
+    name: "local-ca-issuer"
+  dnsNames:
+    - randomfail.tp.lan
+    - randomfail.gmk.lan
