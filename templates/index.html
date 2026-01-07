@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>FastAPI Fastfail</title>
+    <style>
+        body {
+            background-color: #111;
+            color: #eee;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .box {
+            padding: 30px;
+            border: 1px solid #444;
+            border-radius: 8px;
+            background: #222;
+            text-align: center;
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 2rem;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            margin: 8px 0;
+            padding: 12px;
+            font-size: 1.2rem;
+            background: #333;
+            color: #eee;
+            border: 1px solid #555;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #444;
+        }
+        .time {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+        .scenario {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>FastAPI Fastfail</h1>
+
+        <span class="time">
+            Aktuelle Uhrzeit:<br>
+            <strong>{{ TIME }}</strong>
+        </span>
+
+        <span class="scenario">
+            Aktuelles Szenario:<br>
+            <strong>{{ SCENARIO }}</strong>
+        </span>
+
+        <!-- GET Endpoints -->
+        <form action="/healthz" method="get">
+            <button class="btn">/healthz</button>
+        </form>
+
+        <form action="/readyz" method="get">
+            <button class="btn">/readyz</button>
+        </form>
+
+        <hr style="margin: 20px 0; border-color:#444;">
+
+        <!-- POST Chaos Endpoints -->
+        <form action="/chaos/cpu" method="post">
+            <button class="btn">CPU Chaos</button>
+        </form>
+
+        <form action="/chaos/oom" method="post">
+            <button class="btn">OOM Chaos</button>
+        </form>
+
+        <form action="/chaos/disk" method="post">
+            <button class="btn">Disk Fill</button>
+        </form>
+
+        <form action="/chaos/unhealthy" method="post">
+            <button class="btn">Toggle Unhealthy</button>
+        </form>
+
+        <form action="/chaos/crash" method="post">
+            <button class="btn" style="background:#550000;">Crash</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,11 +1,15 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
+from fastapi.templating import Jinja2Templates
 import random
 import asyncio 
 import os
 import threading
 import time
+import datetime
 
 app = FastAPI()
+
+templates = Jinja2Templates(directory="templates")
 
 state = {
     "request_count": 0,
@@ -27,11 +31,19 @@ def readyz():
     return {"status": "ready"}
 
 @app.get("/")
-async def root():
+async def index(request: Request):
     state["request_count"] += 1
     if state["request_count"] % 3 == 0:
         return Response("Chaos Error", status_code=500)
-    return {"message": "Stable", "scenario": state["current_scenario"]}
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "TIME": datetime.datetime.now().strftime("%H:%M:%S"),
+            "SCENARIO": state["current_scenario"]
+        }
+    )
 
 # --- CHAOS LOGIK ---
 

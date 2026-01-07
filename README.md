@@ -62,9 +62,9 @@ pip install fastapi uvicorn
 
 ### Start the service
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8080
-
 uv sync
+uv pip compile pyproject.toml -o requirements.txt
+
 uv run uvicorn main:app --host 0.0.0.0 --port 8080
 ```
 
