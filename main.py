@@ -64,9 +64,9 @@ async def index(request: Request):
         return Response("Chaos Error", status_code=500)
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "TIME": datetime.datetime.now().strftime("%H:%M:%S"),
             "SCENARIO": state["current_scenario"]
         }
