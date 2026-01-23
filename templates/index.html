@@ -74,6 +74,10 @@
             <button class="btn">/readyz</button>
         </form>
 
+        <form action="/status" method="get">
+            <button class="btn">/status</button>
+        </form>
+
         <hr style="margin: 20px 0; border-color:#444;">
 
         <!-- POST Chaos Endpoints -->
@@ -91,6 +95,10 @@
 
         <form action="/chaos/unhealthy" method="post">
             <button class="btn">Toggle Unhealthy</button>
+        </form>
+
+        <form action="/chaos/reset" method="post">
+            <button class="btn" style="background:#005500;">Reset Chaos</button>
         </form>
 
         <form action="/chaos/crash" method="post">
