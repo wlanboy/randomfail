@@ -20,6 +20,18 @@ spec:
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: CHAOS_INTERVAL
+              value: {{ .Values.chaos.interval | quote }}
+            - name: CHAOS_STARTUP_DELAY
+              value: {{ .Values.chaos.startupDelay | quote }}
+            - name: MEMORY_CHUNK_SIZE
+              value: {{ .Values.chaos.memoryChunkSize | quote }}
+            - name: DISK_FILL_SIZE_MB
+              value: {{ .Values.chaos.diskFillSizeMB | quote }}
+            - name: CPU_BURN_THREADS
+              value: {{ .Values.chaos.cpuBurnThreads | quote }}
+            - name: CPU_BURN_DURATION
+              value: {{ .Values.chaos.cpuBurnDuration | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
           resources:

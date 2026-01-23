@@ -23,6 +23,14 @@ pvc:
 volume:
   mountPath: /tmp
 
+chaos:
+  interval: 300              # Sekunden zwischen Chaos-Zyklen
+  startupDelay: 10           # Initialer Puffer beim Start
+  memoryChunkSize: 1000000   # Bytes pro Memory-Chunk (1MB)
+  diskFillSizeMB: 110        # MB für Disk-Fill
+  cpuBurnThreads: 2          # Anzahl paralleler CPU-Threads
+  cpuBurnDuration: 240       # Sekunden CPU-Burn Dauer
+
 istio:
   gatewayName: randomfail-gw
   gatewayNamespace: "istio-ingress"
