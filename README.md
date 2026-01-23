@@ -54,7 +54,7 @@ curl -k -X POST https://randomfail.gmk.lan/chaos/unhealthy
 - Python 3.12+
 - pip
 
-### Install dependencies
+### Install dependencies (old way)
 
 ```bash
 pip install fastapi uvicorn
@@ -62,6 +62,7 @@ pip install fastapi uvicorn
 
 ### Start the service
 ```bash
+uv lock --upgrade
 uv sync
 uv pip compile pyproject.toml -o requirements.txt
 
