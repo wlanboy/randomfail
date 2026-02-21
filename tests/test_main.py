@@ -1,8 +1,8 @@
 import pytest
+import subprocess
+import sys
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 import os
-import tempfile
 
 # Patch environment variables before importing main
 os.environ["CHAOS_INTERVAL"] = "300"
@@ -39,11 +39,12 @@ class TestHealthEndpoints:
     def test_healthz_healthy(self, client):
         """GET /healthz returns 200 when healthy."""
         state["is_unhealthy"] = False
+        state["current_scenario"] = "STABLE"
         response = client.get("/healthz")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert "scenario" in data
+        assert data["scenario"] == "STABLE"
 
     def test_healthz_unhealthy(self, client):
         """GET /healthz returns 500 when unhealthy."""
@@ -86,6 +87,13 @@ class TestIndexEndpoint:
         assert response.status_code == 500
         assert response.text == "Chaos Error"
 
+    def test_index_chaos_error_repeats_pattern(self, client):
+        """GET / returns 500 on every multiple of 3, not just the first."""
+        for multiple in [6, 9, 12]:
+            state["request_count"] = multiple - 1
+            response = client.get("/")
+            assert response.status_code == 500, f"Expected 500 at count={multiple}"
+
     def test_index_increments_request_count(self, client):
         """GET / increments request counter."""
         state["request_count"] = 0
@@ -113,8 +121,12 @@ class TestStatusEndpoint:
         assert data["request_count"] == 42
         assert "memory_hoard_size_mb" in data
         assert "config" in data
-        assert "chaos_interval" in data["config"]
-        assert "cpu_burn_threads" in data["config"]
+        config = data["config"]
+        assert "chaos_interval" in config
+        assert "cpu_burn_threads" in config
+        assert "cpu_burn_duration" in config
+        assert "memory_chunk_size" in config
+        assert "disk_fill_size_mb" in config
 
 
 class TestChaosEndpoints:
@@ -217,6 +229,32 @@ class TestHelperFunctions:
 
         # Should not raise
         cleanup_disk()
+
+
+class TestCrashEndpoint:
+    """Tests for the crash endpoint (requires subprocess to avoid killing test runner)."""
+
+    def test_chaos_crash_exits_process(self):
+        """POST /chaos/crash causes the process to exit with code 1."""
+        script = (
+            "import os; "
+            "os.environ['CHAOS_INTERVAL']='300'; "
+            "os.environ['CHAOS_STARTUP_DELAY']='10'; "
+            "os.environ['MEMORY_CHUNK_SIZE']='1000'; "
+            "os.environ['DISK_FILL_SIZE_MB']='1'; "
+            "os.environ['CPU_BURN_THREADS']='1'; "
+            "os.environ['CPU_BURN_DURATION']='1'; "
+            "from fastapi.testclient import TestClient; "
+            "from main import app; "
+            "client = TestClient(app, raise_server_exceptions=False); "
+            "client.post('/chaos/crash')"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            timeout=10,
+        )
+        assert result.returncode != 0
 
 
 class TestChaosScenarios:
