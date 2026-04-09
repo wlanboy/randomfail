@@ -14,7 +14,7 @@ CHAOS_STARTUP_DELAY = int(os.getenv("CHAOS_STARTUP_DELAY", "10"))  # Initialer P
 MEMORY_CHUNK_SIZE = int(os.getenv("MEMORY_CHUNK_SIZE", str(10**6)))  # 1MB default
 DISK_FILL_SIZE_MB = int(os.getenv("DISK_FILL_SIZE_MB", "110"))
 CPU_BURN_THREADS = int(os.getenv("CPU_BURN_THREADS", "2"))  # Anzahl CPU-Burn Threads
-CPU_BURN_DURATION = int(os.getenv("CPU_BURN_DURATION", "240"))  # Sekunden
+CPU_BURN_DURATION = int(os.getenv("CPU_BURN_DURATION", "120"))  # Sekunden (max CHAOS_INTERVAL / 2)
 
 DISK_JUNK_PATH = "/tmp/chaos_junk.bin"
 
