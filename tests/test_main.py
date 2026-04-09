@@ -175,6 +175,8 @@ class TestChaosEndpoints:
 
         assert data["message"] == "Disk fill started"
         assert state["current_scenario"] == "MANUAL_DISK_FILL"
+        time.sleep(0.1)
+        assert os.path.exists(DISK_JUNK_PATH)
 
     def test_chaos_unhealthy_toggle(self, client):
         """POST /chaos/unhealthy toggles health state."""
