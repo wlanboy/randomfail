@@ -64,6 +64,8 @@ pip install fastapi uvicorn
 ```bash
 uv lock --upgrade
 uv sync
+uv run ruff check .
+uv run pyright .
 uv pip compile pyproject.toml -o requirements.txt
 
 uv run uvicorn main:app --host 0.0.0.0 --port 8080
