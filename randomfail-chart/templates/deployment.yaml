@@ -36,6 +36,8 @@ spec:
               value: {{ .Values.chaos.slowResponseDelay | quote }}
             - name: SIGTERM_DELAY
               value: {{ .Values.chaos.sigtermDelay | quote }}
+            - name: READINESS_FLAP_INTERVAL
+              value: {{ .Values.chaos.readinessFlapInterval | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
           resources:

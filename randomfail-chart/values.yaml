@@ -32,6 +32,7 @@ chaos:
   cpuBurnDuration: 120       # Sekunden CPU-Burn Dauer (max CHAOS_INTERVAL / 2)
   slowResponseDelay: 5       # Sekunden künstliche Verzögerung pro Request (SLOW_RESPONSE)
   sigtermDelay: 30           # Sekunden bis zum sauberen Shutdown nach SIGTERM
+  readinessFlapInterval: 5   # Sekunden zwischen Readiness-Toggles (READINESS_FLAP)
 
 istio:
   gatewayName: randomfail-gw

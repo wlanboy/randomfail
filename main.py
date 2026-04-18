@@ -18,6 +18,7 @@ CPU_BURN_THREADS = int(os.getenv("CPU_BURN_THREADS", "2"))  # Anzahl CPU-Burn Th
 CPU_BURN_DURATION = int(os.getenv("CPU_BURN_DURATION", "120"))  # Sekunden (max CHAOS_INTERVAL / 2)
 SLOW_RESPONSE_DELAY = int(os.getenv("SLOW_RESPONSE_DELAY", "5"))  # Sekunden künstliche Verzögerung
 SIGTERM_DELAY = int(os.getenv("SIGTERM_DELAY", "30"))  # Sekunden bis zum sauberen Shutdown
+READINESS_FLAP_INTERVAL = int(os.getenv("READINESS_FLAP_INTERVAL", "5"))  # Sekunden zwischen Readiness-Toggles
 
 DISK_JUNK_PATH = "/tmp/chaos_junk.bin"
 
@@ -27,6 +28,7 @@ request_lock = threading.Lock()
 state = {
     "request_count": 0,
     "is_unhealthy": False,
+    "is_not_ready": False,
     "memory_hoard": [],
     "fd_hoard": [],
     "current_scenario": "NONE"
@@ -69,7 +71,7 @@ def healthz():
 
 @app.get("/readyz")
 def readyz():
-    if state["is_unhealthy"]:
+    if state["is_unhealthy"] or state["is_not_ready"]:
         return Response("Not Ready", status_code=503)
     return {"status": "ready"}
 
@@ -128,6 +130,7 @@ def cleanup_fds():
 def reset_state():
     """Bereinigt den Status für das nächste Intervall."""
     state["is_unhealthy"] = False
+    state["is_not_ready"] = False
     state["memory_hoard"] = []
     cleanup_disk()
     cleanup_fds()
@@ -140,7 +143,7 @@ async def chaos_loop():
 
     while True:
         reset_state()
-        scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE", "FD_EXHAUSTION"]
+        scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE", "FD_EXHAUSTION", "READINESS_FLAP"]
         state["current_scenario"] = random.choice(scenarios)
 
         print(f"[{time.ctime()}] --- NEW CHAOS CYCLE: {state['current_scenario']} ---")
@@ -179,6 +182,14 @@ async def chaos_loop():
         elif state["current_scenario"] == "FD_EXHAUSTION":
             threading.Thread(target=exhaust_fds, daemon=True).start()
 
+        elif state["current_scenario"] == "READINESS_FLAP":
+            async def flap_readiness():
+                while state["current_scenario"] == "READINESS_FLAP":
+                    state["is_not_ready"] = not state["is_not_ready"]
+                    await asyncio.sleep(READINESS_FLAP_INTERVAL)
+                state["is_not_ready"] = False
+            asyncio.create_task(flap_readiness())
+
         await asyncio.sleep(CHAOS_INTERVAL)
 
 @app.get("/status")
@@ -187,6 +198,7 @@ def get_status():
     return {
         "current_scenario": state["current_scenario"],
         "is_unhealthy": state["is_unhealthy"],
+        "is_not_ready": state["is_not_ready"],
         "request_count": state["request_count"],
         "memory_hoard_size_mb": len(state["memory_hoard"]) * MEMORY_CHUNK_SIZE / (1024 * 1024),
         "fd_hoard_count": len(state["fd_hoard"]),
@@ -252,3 +264,14 @@ async def manual_fd():
     state["current_scenario"] = "MANUAL_FD_EXHAUSTION"
     threading.Thread(target=exhaust_fds, daemon=True).start()
     return {"message": "FD exhaustion started"}
+
+@app.post("/chaos/flap")
+async def manual_flap():
+    state["current_scenario"] = "READINESS_FLAP"
+    async def flap_readiness():
+        while state["current_scenario"] == "READINESS_FLAP":
+            state["is_not_ready"] = not state["is_not_ready"]
+            await asyncio.sleep(READINESS_FLAP_INTERVAL)
+        state["is_not_ready"] = False
+    asyncio.create_task(flap_readiness())
+    return {"message": f"Readiness flapping started (interval: {READINESS_FLAP_INTERVAL}s)"}

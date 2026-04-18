@@ -98,6 +98,18 @@ Beim Empfang des SIGTERM-Signals (ausgelöst durch `kubectl delete pod`, Rolling
 
 ---
 
+### READINESS_FLAP – Intermittierende Readiness
+Der Pod wechselt in konfigurierbarem Takt zwischen `Ready` und `NotReady`, ohne sich zu stabilisieren. Simuliert instabile Datenbankverbindungen, Race Conditions beim Startup oder kurze Überlastzustände. Die Liveness-Probe bleibt dabei unberührt – der Pod wird nicht neu gestartet.
+
+**Kubernetes-Reaktion:**
+- Pod wird wiederholt aus den Service-Endpoints entfernt und wieder hinzugefügt
+- Clients erhalten intermittierend HTTP 503, obwohl der Pod läuft
+- Löst Alerting-Regeln aus (`KubePodNotReady`, `KubeDeploymentReplicasMismatch`)
+- HPA kann nicht stabil skalieren
+- Sichtbar in: `kubectl get endpoints -w`, `kubectl describe pod` → Events: `Readiness probe failed`
+
+---
+
 ### STABLE – Kein Chaos
 Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 
@@ -131,6 +143,7 @@ Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 | `POST /chaos/disk` | DISK_FILL | Startet das Befüllen des PVC |
 | `POST /chaos/slow` | SLOW_RESPONSE | Aktiviert künstliche Request-Verzögerung |
 | `POST /chaos/fd` | FD_EXHAUSTION | Startet das Erschöpfen der File-Descriptors |
+| `POST /chaos/flap` | READINESS_FLAP | Startet das intermittierende Readiness-Toggling |
 
 ---
 
@@ -148,6 +161,7 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 | `CPU_BURN_DURATION` | `120` | Sekunden Dauer des CPU-Burns (empfohlen: max. CHAOS_INTERVAL / 2) |
 | `SLOW_RESPONSE_DELAY` | `5` | Sekunden künstliche Verzögerung pro Request im SLOW_RESPONSE-Szenario |
 | `SIGTERM_DELAY` | `30` | Sekunden Wartezeit nach SIGTERM vor dem Prozess-Exit |
+| `READINESS_FLAP_INTERVAL` | `5` | Sekunden zwischen Readiness-Toggles im READINESS_FLAP-Szenario |
 
 ---
 
@@ -221,6 +235,9 @@ curl -k -X POST https://randomfail.gmk.lan/chaos/slow
 
 # File-Descriptor-Erschöpfung starten
 curl -k -X POST https://randomfail.gmk.lan/chaos/fd
+
+# Readiness Flapping starten (intermittierender NotReady-Status)
+curl -k -X POST https://randomfail.gmk.lan/chaos/flap
 
 # Alle Chaos-Zustände zurücksetzen
 curl -k -X POST https://randomfail.gmk.lan/chaos/reset
