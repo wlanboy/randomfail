@@ -28,6 +28,7 @@ state = {
     "request_count": 0,
     "is_unhealthy": False,
     "memory_hoard": [],
+    "fd_hoard": [],
     "current_scenario": "NONE"
 }
 
@@ -108,11 +109,28 @@ def cleanup_disk():
     except OSError as e:
         print(f"Could not cleanup disk junk: {e}")
 
+def exhaust_fds():
+    """Öffnet /dev/null so lange, bis das FD-Limit erreicht ist."""
+    try:
+        while True:
+            state["fd_hoard"].append(open("/dev/null", "r"))
+    except OSError as e:
+        print(f"FD exhaustion reached as expected: {e}")
+
+def cleanup_fds():
+    for f in state["fd_hoard"]:
+        try:
+            f.close()
+        except OSError:
+            pass
+    state["fd_hoard"] = []
+
 def reset_state():
     """Bereinigt den Status für das nächste Intervall."""
     state["is_unhealthy"] = False
     state["memory_hoard"] = []
     cleanup_disk()
+    cleanup_fds()
     # Hinweis: CPU Threads lassen sich schwer stoppen,
     # daher nutzen wir dort im 'burn' eine Zeitbegrenzung.
 
@@ -122,7 +140,7 @@ async def chaos_loop():
 
     while True:
         reset_state()
-        scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE"]
+        scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE", "FD_EXHAUSTION"]
         state["current_scenario"] = random.choice(scenarios)
 
         print(f"[{time.ctime()}] --- NEW CHAOS CYCLE: {state['current_scenario']} ---")
@@ -155,6 +173,9 @@ async def chaos_loop():
         elif state["current_scenario"] == "SLOW_RESPONSE":
             pass  # Middleware wertet current_scenario aus
 
+        elif state["current_scenario"] == "FD_EXHAUSTION":
+            threading.Thread(target=exhaust_fds, daemon=True).start()
+
         await asyncio.sleep(CHAOS_INTERVAL)
 
 @app.get("/status")
@@ -165,6 +186,7 @@ def get_status():
         "is_unhealthy": state["is_unhealthy"],
         "request_count": state["request_count"],
         "memory_hoard_size_mb": len(state["memory_hoard"]) * MEMORY_CHUNK_SIZE / (1024 * 1024),
+        "fd_hoard_count": len(state["fd_hoard"]),
         "config": {
             "chaos_interval": CHAOS_INTERVAL,
             "cpu_burn_threads": CPU_BURN_THREADS,
@@ -221,3 +243,9 @@ async def manual_disk():
 async def manual_slow():
     state["current_scenario"] = "MANUAL_SLOW"
     return {"message": f"Slow response mode active ({SLOW_RESPONSE_DELAY}s delay per request)"}
+
+@app.post("/chaos/fd")
+async def manual_fd():
+    state["current_scenario"] = "MANUAL_FD_EXHAUSTION"
+    threading.Thread(target=exhaust_fds, daemon=True).start()
+    return {"message": "FD exhaustion started"}
