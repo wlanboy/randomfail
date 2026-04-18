@@ -30,6 +30,8 @@ chaos:
   diskFillSizeMB: 110        # MB für Disk-Fill
   cpuBurnThreads: 2          # Anzahl paralleler CPU-Threads
   cpuBurnDuration: 120       # Sekunden CPU-Burn Dauer (max CHAOS_INTERVAL / 2)
+  slowResponseDelay: 5       # Sekunden künstliche Verzögerung pro Request (SLOW_RESPONSE)
+  sigtermDelay: 30           # Sekunden bis zum sauberen Shutdown nach SIGTERM
 
 istio:
   gatewayName: randomfail-gw
