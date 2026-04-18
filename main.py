@@ -146,10 +146,13 @@ async def chaos_loop():
         print(f"[{time.ctime()}] --- NEW CHAOS CYCLE: {state['current_scenario']} ---")
 
         if state["current_scenario"] == "OOM_KILL":
-            # Füllt den Speicher langsam, bis das Limit knallt
-            for _ in range(100):
-                state["memory_hoard"].append(" " * MEMORY_CHUNK_SIZE)
-                await asyncio.sleep(1)
+            async def fill_memory():
+                for _ in range(100):
+                    if state["current_scenario"] != "OOM_KILL":
+                        break
+                    state["memory_hoard"].append(" " * MEMORY_CHUNK_SIZE)
+                    await asyncio.sleep(1)
+            asyncio.create_task(fill_memory())
 
         elif state["current_scenario"] == "CPU_BURN":
             # Erzeugt Last mit mehreren Threads für Multi-Core-Systeme
