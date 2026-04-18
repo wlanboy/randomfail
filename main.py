@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import random
 import asyncio
 import os
+import signal
 import threading
 import time
 import datetime
@@ -15,6 +16,8 @@ MEMORY_CHUNK_SIZE = int(os.getenv("MEMORY_CHUNK_SIZE", str(10**6)))  # 1MB defau
 DISK_FILL_SIZE_MB = int(os.getenv("DISK_FILL_SIZE_MB", "110"))
 CPU_BURN_THREADS = int(os.getenv("CPU_BURN_THREADS", "2"))  # Anzahl CPU-Burn Threads
 CPU_BURN_DURATION = int(os.getenv("CPU_BURN_DURATION", "120"))  # Sekunden (max CHAOS_INTERVAL / 2)
+SLOW_RESPONSE_DELAY = int(os.getenv("SLOW_RESPONSE_DELAY", "5"))  # Sekunden künstliche Verzögerung
+SIGTERM_DELAY = int(os.getenv("SIGTERM_DELAY", "30"))  # Sekunden bis zum sauberen Shutdown
 
 DISK_JUNK_PATH = "/tmp/chaos_junk.bin"
 
@@ -28,17 +31,32 @@ state = {
     "current_scenario": "NONE"
 }
 
+def _sigterm_handler(_signum, _frame):
+    """Verzögerter SIGTERM-Handler – testet terminationGracePeriodSeconds."""
+    print(f"[{time.ctime()}] SIGTERM received, waiting {SIGTERM_DELAY}s before exit...")
+    state["current_scenario"] = "SIGTERM_DELAY"
+    state["is_unhealthy"] = True
+    time.sleep(SIGTERM_DELAY)
+    os._exit(0)
+
+signal.signal(signal.SIGTERM, _sigterm_handler)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan Context Manager für Startup/Shutdown."""
     # Startup
     asyncio.create_task(chaos_loop())
     yield
-    # Shutdown (optional: cleanup)
 
 app = FastAPI(lifespan=lifespan)
 
 templates = Jinja2Templates(directory="templates")
+
+@app.middleware("http")
+async def slow_response_middleware(request: Request, call_next):
+    if state["current_scenario"] in ("SLOW_RESPONSE", "MANUAL_SLOW"):
+        await asyncio.sleep(SLOW_RESPONSE_DELAY)
+    return await call_next(request)
 
 # --- KUBERNETES PROBES ---
 
@@ -104,7 +122,7 @@ async def chaos_loop():
 
     while True:
         reset_state()
-        scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL"]
+        scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE"]
         state["current_scenario"] = random.choice(scenarios)
 
         print(f"[{time.ctime()}] --- NEW CHAOS CYCLE: {state['current_scenario']} ---")
@@ -133,6 +151,9 @@ async def chaos_loop():
 
         elif state["current_scenario"] == "DISK_FILL":
             fill_disk()
+
+        elif state["current_scenario"] == "SLOW_RESPONSE":
+            pass  # Middleware wertet current_scenario aus
 
         await asyncio.sleep(CHAOS_INTERVAL)
 
@@ -195,3 +216,8 @@ async def manual_disk():
     state["current_scenario"] = "MANUAL_DISK_FILL"
     threading.Thread(target=fill_disk, daemon=True).start()
     return {"message": "Disk fill started"}
+
+@app.post("/chaos/slow")
+async def manual_slow():
+    state["current_scenario"] = "MANUAL_SLOW"
+    return {"message": f"Slow response mode active ({SLOW_RESPONSE_DELAY}s delay per request)"}
