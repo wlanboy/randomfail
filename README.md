@@ -1,8 +1,16 @@
 # Kubernetes Chaos Simulator – randomfail
 
-Ein absichtlich instabiler FastAPI-Service zur Simulation realer Ausfallszenarien in Kubernetes-Clustern. Der Service löst automatisch und manuell verschiedene Fehlerzustände aus und ermöglicht so das gezielte Testen von Liveness/Readiness-Probes, Self-Healing-Mechanismen, HPA-Reaktionen, PVC-Limits und Graceful-Shutdown-Verhalten.
+randomfail ist ein absichtlich instabiler FastAPI‑Service zur Simulation realer Ausfallszenarien in Kubernetes‑Clustern.
+Der Dienst erzeugt automatisch oder manuell verschiedene Fehlerzustände und ermöglicht so das gezielte Testen von:
 
-Der Chaos-Zyklus wechselt in konfigurierbaren Intervallen automatisch zwischen den Szenarien. Zusätzlich können alle Szenarien jederzeit manuell per HTTP-Endpoint ausgelöst werden.
+- Liveness‑ und Readiness‑Probes
+- Self‑Healing‑Mechanismen
+- HPA‑Reaktionen unter Last
+- PVC‑Limits und Storage‑Fehlern
+- Graceful‑Shutdown‑Verhalten
+
+Der integrierte Chaos‑Zyklus wechselt in frei konfigurierbaren Intervallen automatisch zwischen verschiedenen Fehlerszenarien.
+Zusätzlich lassen sich alle Szenarien jederzeit manuell über HTTP‑Endpoints auslösen — ideal für reproduzierbare Tests, Demos oder Chaos‑Engineering‑Workshops.
 
 ---
 
