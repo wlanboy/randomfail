@@ -1,5 +1,5 @@
-## Helm install
-This helm script installs the WebShell within a kubernetes cluster.
+## Helm install for randomfail chart
+This helm script installs the randmon fail deployment within a kubernetes cluster.
 
 ```bash
 helm install randomfail . -n randomfail --create-namespace
