@@ -1,13 +1,14 @@
-from fastapi import FastAPI, Response, Request
-from fastapi.templating import Jinja2Templates
-from contextlib import asynccontextmanager
-import random
 import asyncio
+import datetime
 import os
+import random
 import signal
 import threading
 import time
-import datetime
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request, Response
+from fastapi.templating import Jinja2Templates
 
 # Konfiguration via Environment-Variablen
 CHAOS_INTERVAL = int(os.getenv("CHAOS_INTERVAL", "300"))  # Sekunden zwischen Chaos-Zyklen
@@ -88,7 +89,7 @@ async def index(request: Request):
         request,
         "index.html",
         {
-            "TIME": datetime.datetime.now().strftime("%H:%M:%S"),
+            "TIME": datetime.datetime.now(tz=datetime.UTC).astimezone().strftime("%H:%M:%S"),
             "SCENARIO": state["current_scenario"]
         }
     )
@@ -99,7 +100,7 @@ def fill_disk():
     try:
         with open(DISK_JUNK_PATH, "wb") as f:
             f.write(os.urandom(DISK_FILL_SIZE_MB * 1024 * 1024))
-    except IOError as e:
+    except OSError as e:
         print(f"Disk full error as expected: {e}")
 
 
@@ -115,7 +116,7 @@ def exhaust_fds():
     """Öffnet /dev/null so lange, bis das FD-Limit erreicht ist."""
     try:
         while True:
-            state["fd_hoard"].append(open("/dev/null", "r"))
+            state["fd_hoard"].append(open("/dev/null", "r"))  # noqa: SIM115
     except OSError as e:
         print(f"FD exhaustion reached as expected: {e}")
 

@@ -1,9 +1,10 @@
-import pytest
+import os
 import subprocess
 import sys
 import time
+
+import pytest
 from fastapi.testclient import TestClient
-import os
 
 # Patch environment variables before importing main
 os.environ["CHAOS_INTERVAL"] = "300"
@@ -13,7 +14,7 @@ os.environ["DISK_FILL_SIZE_MB"] = "1"  # Smaller for tests
 os.environ["CPU_BURN_THREADS"] = "1"
 os.environ["CPU_BURN_DURATION"] = "1"
 
-from main import app, state, reset_state, fill_disk, cleanup_disk, DISK_JUNK_PATH
+from main import DISK_JUNK_PATH, app, cleanup_disk, fill_disk, reset_state, state
 
 
 @pytest.fixture
@@ -256,6 +257,7 @@ class TestCrashEndpoint:
             [sys.executable, "-c", script],
             capture_output=True,
             timeout=10,
+            check=False,
         )
         assert result.returncode != 0
 
