@@ -21,23 +21,23 @@ spec:
             - name: PYTHONUNBUFFERED
               value: "1"
             - name: CHAOS_INTERVAL
-              value: {{ .Values.chaos.interval | quote }}
+              value: {{ .Values.chaos.interval | int | quote }}
             - name: CHAOS_STARTUP_DELAY
-              value: {{ .Values.chaos.startupDelay | quote }}
+              value: {{ .Values.chaos.startupDelay | int | quote }}
             - name: MEMORY_CHUNK_SIZE
-              value: {{ .Values.chaos.memoryChunkSize | quote }}
+              value: {{ .Values.chaos.memoryChunkSize | int | quote }}
             - name: DISK_FILL_SIZE_MB
-              value: {{ .Values.chaos.diskFillSizeMB | quote }}
+              value: {{ .Values.chaos.diskFillSizeMB | int | quote }}
             - name: CPU_BURN_THREADS
-              value: {{ .Values.chaos.cpuBurnThreads | quote }}
+              value: {{ .Values.chaos.cpuBurnThreads | int | quote }}
             - name: CPU_BURN_DURATION
-              value: {{ .Values.chaos.cpuBurnDuration | quote }}
+              value: {{ .Values.chaos.cpuBurnDuration | int | quote }}
             - name: SLOW_RESPONSE_DELAY
-              value: {{ .Values.chaos.slowResponseDelay | quote }}
+              value: {{ .Values.chaos.slowResponseDelay | int | quote }}
             - name: SIGTERM_DELAY
-              value: {{ .Values.chaos.sigtermDelay | quote }}
+              value: {{ .Values.chaos.sigtermDelay | int | quote }}
             - name: READINESS_FLAP_INTERVAL
-              value: {{ .Values.chaos.readinessFlapInterval | quote }}
+              value: {{ .Values.chaos.readinessFlapInterval | int | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
           resources:
