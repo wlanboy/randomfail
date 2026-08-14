@@ -65,15 +65,17 @@ async def slow_response_middleware(request: Request, call_next):
 # --- KUBERNETES PROBES ---
 
 @app.get("/healthz")
-def healthz():
+def healthz(response: Response):
     if state["is_unhealthy"]:
-        return Response("Unhealthy", status_code=500)
+        response.status_code = 500
+        return {"status": "unhealthy", "scenario": state["current_scenario"]}
     return {"status": "ok", "scenario": state["current_scenario"]}
 
 @app.get("/readyz")
-def readyz():
+def readyz(response: Response):
     if state["is_unhealthy"] or state["is_not_ready"]:
-        return Response("Not Ready", status_code=503)
+        response.status_code = 503
+        return {"status": "not ready"}
     return {"status": "ready"}
 
 @app.get("/")

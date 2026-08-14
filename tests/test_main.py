@@ -53,7 +53,8 @@ class TestHealthEndpoints:
         state["is_unhealthy"] = True
         response = client.get("/healthz")
         assert response.status_code == 500
-        assert response.text == "Unhealthy"
+        data = response.json()
+        assert data["status"] == "unhealthy"
 
     def test_readyz_ready(self, client):
         """GET /readyz returns 200 when ready."""
@@ -68,7 +69,8 @@ class TestHealthEndpoints:
         state["is_unhealthy"] = True
         response = client.get("/readyz")
         assert response.status_code == 503
-        assert response.text == "Not Ready"
+        data = response.json()
+        assert data["status"] == "not ready"
 
 
 class TestIndexEndpoint:
