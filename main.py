@@ -23,8 +23,8 @@ READINESS_FLAP_INTERVAL = int(os.getenv("READINESS_FLAP_INTERVAL", "5"))  # Seku
 
 DISK_JUNK_PATH = "/tmp/chaos_junk.bin"
 
-# Thread-safe Lock für request_count
-request_lock = threading.Lock()
+# Thread-safe Lock für gemeinsam genutzten State (request_count, fd_hoard, memory_hoard)
+state_lock = threading.Lock()
 
 state = {
     "request_count": 0,
@@ -35,20 +35,28 @@ state = {
     "current_scenario": "NONE"
 }
 
-def _sigterm_handler(_signum, _frame):
+async def _sigterm_delay():
     """Verzögerter SIGTERM-Handler – testet terminationGracePeriodSeconds."""
     print(f"[{time.ctime()}] SIGTERM received, waiting {SIGTERM_DELAY}s before exit...")
     state["current_scenario"] = "SIGTERM_DELAY"
     state["is_unhealthy"] = True
-    time.sleep(SIGTERM_DELAY)
+    await asyncio.sleep(SIGTERM_DELAY)
     os._exit(0)
-
-signal.signal(signal.SIGTERM, _sigterm_handler)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan Context Manager für Startup/Shutdown."""
     # Startup
+    # Muss über die Event-Loop registriert werden (nicht signal.signal auf Modulebene):
+    # uvicorn installiert seinen eigenen SIGTERM-Handler erst beim Server-Start und
+    # würde einen zuvor über signal.signal() gesetzten Handler sonst überschreiben.
+    # Zudem bleibt der Event-Loop so während der Wartezeit responsive für /healthz & /readyz.
+    loop = asyncio.get_running_loop()
+    try:
+        loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(_sigterm_delay()))
+    except (RuntimeError, NotImplementedError) as e:
+        # z.B. in Tests, wo die Event-Loop nicht im Hauptthread läuft
+        print(f"Could not register SIGTERM handler: {e}")
     asyncio.create_task(chaos_loop())
     yield
 
@@ -80,7 +88,7 @@ def readyz(response: Response):
 
 @app.get("/")
 async def index(request: Request):
-    with request_lock:
+    with state_lock:
         state["request_count"] += 1
         count = state["request_count"]
 
@@ -118,23 +126,28 @@ def exhaust_fds():
     """Öffnet /dev/null so lange, bis das FD-Limit erreicht ist."""
     try:
         while True:
-            state["fd_hoard"].append(open("/dev/null", "r"))  # noqa: SIM115
+            fd = open("/dev/null", "r")  # noqa: SIM115
+            with state_lock:
+                state["fd_hoard"].append(fd)
     except OSError as e:
         print(f"FD exhaustion reached as expected: {e}")
 
 def cleanup_fds():
-    for f in state["fd_hoard"]:
+    with state_lock:
+        fds = state["fd_hoard"]
+        state["fd_hoard"] = []
+    for f in fds:
         try:
             f.close()
         except OSError:
             pass
-    state["fd_hoard"] = []
 
 def reset_state():
     """Bereinigt den Status für das nächste Intervall."""
     state["is_unhealthy"] = False
     state["is_not_ready"] = False
-    state["memory_hoard"] = []
+    with state_lock:
+        state["memory_hoard"] = []
     cleanup_disk()
     cleanup_fds()
     # Hinweis: CPU Threads lassen sich schwer stoppen,
@@ -156,7 +169,8 @@ async def chaos_loop():
                 for _ in range(100):
                     if state["current_scenario"] != "OOM_KILL":
                         break
-                    state["memory_hoard"].append(" " * MEMORY_CHUNK_SIZE)
+                    with state_lock:
+                        state["memory_hoard"].append(" " * MEMORY_CHUNK_SIZE)
                     await asyncio.sleep(1)
             asyncio.create_task(fill_memory())
 
@@ -198,13 +212,17 @@ async def chaos_loop():
 @app.get("/status")
 def get_status():
     """Gibt den kompletten aktuellen Status zurück."""
+    with state_lock:
+        request_count = state["request_count"]
+        memory_hoard_len = len(state["memory_hoard"])
+        fd_hoard_count = len(state["fd_hoard"])
     return {
         "current_scenario": state["current_scenario"],
         "is_unhealthy": state["is_unhealthy"],
         "is_not_ready": state["is_not_ready"],
-        "request_count": state["request_count"],
-        "memory_hoard_size_mb": len(state["memory_hoard"]) * MEMORY_CHUNK_SIZE / (1024 * 1024),
-        "fd_hoard_count": len(state["fd_hoard"]),
+        "request_count": request_count,
+        "memory_hoard_size_mb": memory_hoard_len * MEMORY_CHUNK_SIZE / (1024 * 1024),
+        "fd_hoard_count": fd_hoard_count,
         "config": {
             "chaos_interval": CHAOS_INTERVAL,
             "cpu_burn_threads": CPU_BURN_THREADS,
@@ -238,7 +256,8 @@ async def manual_cpu():
 async def manual_oom():
     state["current_scenario"] = "MANUAL_OOM"
     # Fügt 100MB auf einmal hinzu für schnelleren OOM-Effekt
-    state["memory_hoard"].append(" " * (100 * MEMORY_CHUNK_SIZE))
+    with state_lock:
+        state["memory_hoard"].append(" " * (100 * MEMORY_CHUNK_SIZE))
     return {"message": "Manual OOM pressure added (100MB)"}
 
 @app.post("/chaos/crash")
