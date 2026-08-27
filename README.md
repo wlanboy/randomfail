@@ -208,7 +208,7 @@ docker run -p 8080:8080 \
 ## Deployment in Kubernetes (Helm)
 
 ```bash
-helm install randomfail ./randomfail-chart
+helm install randomfail ./randomfail-chart -n randomfail
 ```
 
 Das Chart enthält:
