@@ -40,6 +40,7 @@ istio:
   hosts: 
     - randomfail.tp.lan
     - randomfail.gmk.lan
+    - randomfail.localhost
   tls:
     enabled: true
     secretName: randomfail-tls
@@ -52,3 +53,4 @@ certManager:
   dnsNames:
     - randomfail.tp.lan
     - randomfail.gmk.lan
+    - randomfail.localhost
