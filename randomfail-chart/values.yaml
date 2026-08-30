@@ -34,16 +34,25 @@ chaos:
   sigtermDelay: 30           # Sekunden bis zum sauberen Shutdown nach SIGTERM
   readinessFlapInterval: 5   # Sekunden zwischen Readiness-Toggles (READINESS_FLAP)
 
-istio:
-  gatewayName: randomfail-gw
-  gatewayNamespace: "istio-ingress"
-  hosts: 
+ingress:
+  # istio | traefik | none
+  controller: istio
+  hosts:
     - randomfail.tp.lan
     - randomfail.gmk.lan
     - randomfail.localhost
+
+istio:
+  gatewayName: randomfail-gw
+  gatewayNamespace: "istio-ingress"
   tls:
     enabled: true
     secretName: randomfail-tls
+
+traefik:
+  entryPoints:
+    - web
+    - websecure
 
 certManager:
   enabled: true
