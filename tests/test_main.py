@@ -1,4 +1,6 @@
+import asyncio
 import os
+import resource
 import subprocess
 import sys
 import time
@@ -11,7 +13,7 @@ os.environ["CHAOS_INTERVAL"] = "300"
 os.environ["CHAOS_STARTUP_DELAY"] = "10"
 os.environ["MEMORY_CHUNK_SIZE"] = "1000"  # Smaller for tests
 os.environ["DISK_FILL_SIZE_MB"] = "1"  # Smaller for tests
-os.environ["CPU_BURN_THREADS"] = "1"
+os.environ["CPU_BURN_WORKERS"] = "1"
 os.environ["CPU_BURN_DURATION"] = "1"
 
 import main
@@ -20,6 +22,8 @@ from main import (
     app,
     background_tasks,
     cleanup_disk,
+    cleanup_fds,
+    exhaust_fds,
     fill_disk,
     reset_state,
     state,
@@ -136,7 +140,8 @@ class TestStatusEndpoint:
         assert "config" in data
         config = data["config"]
         assert "chaos_interval" in config
-        assert "cpu_burn_threads" in config
+        assert "cpu_burn_workers" in config
+        assert "fd_exhaustion_limit" in config
         assert "cpu_burn_duration" in config
         assert "memory_chunk_size" in config
         assert "disk_fill_size_mb" in config
@@ -169,20 +174,34 @@ class TestChaosEndpoints:
         assert "Manual CPU spike started" in data["message"]
         assert state["current_scenario"] == "MANUAL_CPU"
 
+    def test_chaos_cpu_uses_processes(self, client):
+        """POST /chaos/cpu starts CPU_BURN_WORKERS separate processes."""
+        client.post("/chaos/cpu")
+        assert len(main.cpu_procs) == main.CPU_BURN_WORKERS
+        assert all(p.is_alive() and p.pid != os.getpid() for p in main.cpu_procs)
+
     def test_chaos_cpu_repeated_stops_previous_burn(self, client):
-        """Repeated POST /chaos/cpu signals the previous burn threads to stop."""
+        """Repeated POST /chaos/cpu terminates the previous burn processes."""
         client.post("/chaos/cpu")
-        first_stop = main.cpu_stop
+        first = list(main.cpu_procs)
         client.post("/chaos/cpu")
-        assert first_stop.is_set()
-        assert not main.cpu_stop.is_set()
+        assert not any(p.is_alive() for p in first)
+        assert len(main.cpu_procs) == main.CPU_BURN_WORKERS
 
     def test_chaos_reset_stops_cpu_burn(self, client):
-        """POST /chaos/reset signals running burn threads to stop."""
+        """POST /chaos/reset terminates running burn processes."""
         client.post("/chaos/cpu")
-        stop = main.cpu_stop
+        procs = list(main.cpu_procs)
         client.post("/chaos/reset")
-        assert stop.is_set()
+        assert not any(p.is_alive() for p in procs)
+        assert main.cpu_procs == []
+
+    def test_chaos_pause_and_resume(self, client):
+        """POST /chaos/pause and /chaos/resume toggle the chaos loop."""
+        assert client.post("/chaos/pause").json() == {"chaos_enabled": False}
+        assert client.get("/status").json()["chaos_enabled"] is False
+        assert client.post("/chaos/resume").json() == {"chaos_enabled": True}
+        assert state["chaos_enabled"] is True
 
     def test_chaos_flap_runs_single_task(self, client):
         """Repeated POST /chaos/flap keeps exactly one flap task."""
@@ -269,6 +288,21 @@ class TestHelperFunctions:
         cleanup_disk()
         assert not os.path.exists(DISK_JUNK_PATH)
 
+    def test_exhaust_fds_lowers_and_restores_limit(self, monkeypatch):
+        """exhaust_fds() hits the lowered soft limit quickly; cleanup_fds() restores it."""
+        original = resource.getrlimit(resource.RLIMIT_NOFILE)
+        limit = len(os.listdir("/proc/self/fd")) + 20
+        monkeypatch.setattr(main, "FD_EXHAUSTION_LIMIT", limit)
+
+        try:
+            exhaust_fds()
+            assert resource.getrlimit(resource.RLIMIT_NOFILE)[0] == limit
+            assert 0 < len(state["fd_hoard"]) <= 21  # +1: FD von listdir ist wieder frei
+        finally:
+            cleanup_fds()
+        assert resource.getrlimit(resource.RLIMIT_NOFILE) == original
+        assert state["fd_hoard"] == []
+
     def test_cleanup_disk_handles_missing_file(self):
         """cleanup_disk() handles non-existent file gracefully."""
         if os.path.exists(DISK_JUNK_PATH):
@@ -289,7 +323,7 @@ class TestCrashEndpoint:
             "os.environ['CHAOS_STARTUP_DELAY']='10'; "
             "os.environ['MEMORY_CHUNK_SIZE']='1000'; "
             "os.environ['DISK_FILL_SIZE_MB']='1'; "
-            "os.environ['CPU_BURN_THREADS']='1'; "
+            "os.environ['CPU_BURN_WORKERS']='1'; "
             "os.environ['CPU_BURN_DURATION']='1'; "
             "from fastapi.testclient import TestClient; "
             "from main import app; "
@@ -353,3 +387,32 @@ class TestChaosScenarios:
         start = time.monotonic()
         client.get("/healthz")
         assert time.monotonic() - start >= 1
+
+
+class TestChaosLoop:
+    """Tests for the automatic chaos loop."""
+
+    @staticmethod
+    def _run_loop_briefly():
+        async def run():
+            task = asyncio.create_task(main.chaos_loop())
+            await asyncio.sleep(0.2)
+            task.cancel()
+        asyncio.run(run())
+
+    def test_paused_loop_keeps_manual_scenario(self, monkeypatch):
+        """A paused chaos loop does not override a manual scenario."""
+        monkeypatch.setattr(main, "CHAOS_STARTUP_DELAY", 0)
+        monkeypatch.setitem(state, "chaos_enabled", False)
+        state["current_scenario"] = "MANUAL_SLOW"
+        self._run_loop_briefly()
+        assert state["current_scenario"] == "MANUAL_SLOW"
+
+    def test_enabled_loop_starts_cycle(self, monkeypatch):
+        """An enabled chaos loop picks a new scenario."""
+        monkeypatch.setattr(main, "CHAOS_STARTUP_DELAY", 0)
+        monkeypatch.setitem(state, "chaos_enabled", True)
+        monkeypatch.setattr(main.random, "choice", lambda _: "STABLE")
+        state["current_scenario"] = "MANUAL_SLOW"
+        self._run_loop_briefly()
+        assert state["current_scenario"] == "STABLE"

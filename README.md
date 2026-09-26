@@ -28,13 +28,13 @@ Der Service füllt schrittweise und ohne Obergrenze den Arbeitsspeicher (1 MB pr
 ---
 
 ### CPU_BURN – CPU-Erschöpfung
-Mehrere Threads führen Endlosberechnungen durch und sättigen die zugewiesenen CPU-Kerne vollständig für eine konfigurierbare Dauer.
+Mehrere separate Prozesse führen Endlosberechnungen durch und sättigen die zugewiesenen CPU-Kerne für eine konfigurierbare Dauer. Prozesse statt Threads, weil der GIL Threads auf einen Kern beschränkt; der Event-Loop bleibt dadurch frei und die Probes erreichbar.
 
 **Kubernetes-Reaktion:**
 - Container wird auf das CPU-Limit gedrosselt (CPU Throttling)
 - Sichtbar in Metrik `container_cpu_cfs_throttled_seconds_total`
 - Horizontal Pod Autoscaler (HPA) kann weitere Replikas hochskalieren
-- Probe-Timeouts möglich, wenn der Event-Loop durch Throttling verzögert wird
+- Probes bleiben erreichbar; Probe-Timeouts gezielt über SLOW_RESPONSE mit `SLOW_AFFECTS_PROBES=true` testen
 
 ---
 
@@ -84,7 +84,7 @@ Jeder HTTP-Request wird künstlich um eine konfigurierbare Anzahl von Sekunden v
 ---
 
 ### FD_EXHAUSTION – File-Descriptor-Erschöpfung
-Der Service öffnet kontinuierlich Datei-Handles ohne sie zu schließen, bis das Betriebssystem-Limit (`ulimit -n`) erreicht ist.
+Der Service öffnet kontinuierlich Datei-Handles ohne sie zu schließen, bis das Limit erreicht ist. Vorher wird das Soft-Limit `RLIMIT_NOFILE` auf `FD_EXHAUSTION_LIMIT` (Default 1024) gesenkt, da containerd `nofile` oft auf 1.048.576 setzt und das Szenario sonst sehr lange dauert. Beim Reset wird das ursprüngliche Limit wiederhergestellt.
 
 **Kubernetes-Reaktion:**
 - Alle weiteren Systemoperationen schlagen mit `too many open files` fehl
@@ -145,8 +145,10 @@ Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 | Endpunkt | Szenario | Beschreibung |
 |---|---|---|
 | `POST /chaos/reset` | – | Setzt alle Chaos-Zustände zurück |
+| `POST /chaos/pause` | – | Pausiert den automatischen Chaos-Loop; das aktive Szenario läuft weiter bis `/chaos/reset` |
+| `POST /chaos/resume` | – | Setzt den automatischen Chaos-Loop fort |
 | `POST /chaos/oom` | OOM_KILL | Fügt sofort 100 MB Speicherdruck hinzu |
-| `POST /chaos/cpu` | CPU_BURN | Startet CPU-Burn-Threads für konfigurierte Dauer |
+| `POST /chaos/cpu` | CPU_BURN | Startet CPU-Burn-Prozesse für konfigurierte Dauer |
 | `POST /chaos/crash` | CRASH | Beendet den Prozess sofort mit Exit Code 1 |
 | `POST /chaos/unhealthy` | SLOW_DEATH | Schaltet den Health-Status um (Toggle) |
 | `POST /chaos/disk` | DISK_FILL | Startet das Befüllen des PVC |
@@ -162,16 +164,18 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 
 | Variable | Default | Beschreibung |
 |---|---|---|
+| `CHAOS_ENABLED` | `true` | `false`: automatischer Chaos-Loop startet pausiert (per `/chaos/resume` aktivierbar) |
 | `CHAOS_INTERVAL` | `300` | Sekunden zwischen automatischen Chaos-Zyklen |
 | `CHAOS_STARTUP_DELAY` | `10` | Sekunden Wartezeit nach dem Start vor dem ersten Zyklus |
 | `MEMORY_CHUNK_SIZE` | `1000000` | Bytes pro Speicher-Chunk im OOM-Szenario (1 MB) |
 | `DISK_FILL_SIZE_MB` | `110` | Größe der Junk-Datei für das DISK_FILL-Szenario in MB |
-| `CPU_BURN_THREADS` | `2` | Anzahl paralleler Threads im CPU_BURN-Szenario |
+| `CPU_BURN_WORKERS` | `2` | Anzahl paralleler Prozesse im CPU_BURN-Szenario (je ein Kern) |
 | `CPU_BURN_DURATION` | `120` | Sekunden Dauer des CPU-Burns (empfohlen: max. CHAOS_INTERVAL / 2) |
 | `SLOW_RESPONSE_DELAY` | `5` | Sekunden künstliche Verzögerung pro Request im SLOW_RESPONSE-Szenario |
 | `SLOW_AFFECTS_PROBES` | `false` | `true`: SLOW_RESPONSE verzögert auch `/healthz` und `/readyz` |
 | `SIGTERM_DELAY` | `30` | Sekunden Wartezeit nach SIGTERM vor dem Prozess-Exit |
 | `READINESS_FLAP_INTERVAL` | `5` | Sekunden zwischen Readiness-Toggles im READINESS_FLAP-Szenario |
+| `FD_EXHAUSTION_LIMIT` | `1024` | Soft-Limit für offene FDs im FD_EXHAUSTION-Szenario, `0` = Limit nicht ändern |
 
 ---
 
@@ -248,6 +252,12 @@ curl -k -X POST https://randomfail.gmk.lan/chaos/fd
 
 # Readiness Flapping starten (intermittierender NotReady-Status)
 curl -k -X POST https://randomfail.gmk.lan/chaos/flap
+
+# Automatischen Chaos-Loop pausieren, damit manuelle Szenarien nicht überschrieben werden
+curl -k -X POST https://randomfail.gmk.lan/chaos/pause
+
+# Automatischen Chaos-Loop fortsetzen
+curl -k -X POST https://randomfail.gmk.lan/chaos/resume
 
 # Alle Chaos-Zustände zurücksetzen
 curl -k -X POST https://randomfail.gmk.lan/chaos/reset

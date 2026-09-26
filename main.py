@@ -1,26 +1,31 @@
 import asyncio
 import datetime
+import multiprocessing
 import os
 import random
+import resource
 import signal
 import threading
 import time
 from contextlib import asynccontextmanager
+from multiprocessing.process import BaseProcess
 
 from fastapi import FastAPI, Request, Response
 from fastapi.templating import Jinja2Templates
 
 # Konfiguration via Environment-Variablen
+CHAOS_ENABLED = os.getenv("CHAOS_ENABLED", "true").lower() == "true"  # false: kein automatischer Chaos-Loop
 CHAOS_INTERVAL = int(os.getenv("CHAOS_INTERVAL", "300"))  # Sekunden zwischen Chaos-Zyklen
 CHAOS_STARTUP_DELAY = int(os.getenv("CHAOS_STARTUP_DELAY", "10"))  # Initialer Puffer
 MEMORY_CHUNK_SIZE = int(os.getenv("MEMORY_CHUNK_SIZE", str(10**6)))  # 1MB default
 DISK_FILL_SIZE_MB = int(os.getenv("DISK_FILL_SIZE_MB", "110"))
-CPU_BURN_THREADS = int(os.getenv("CPU_BURN_THREADS", "2"))  # Anzahl CPU-Burn Threads
+CPU_BURN_WORKERS = int(os.getenv("CPU_BURN_WORKERS", "2"))  # Anzahl CPU-Burn Prozesse (je ein Kern)
 CPU_BURN_DURATION = int(os.getenv("CPU_BURN_DURATION", "120"))  # Sekunden (max CHAOS_INTERVAL / 2)
 SLOW_RESPONSE_DELAY = int(os.getenv("SLOW_RESPONSE_DELAY", "5"))  # Sekunden künstliche Verzögerung
 SIGTERM_DELAY = int(os.getenv("SIGTERM_DELAY", "30"))  # Sekunden bis zum sauberen Shutdown
 READINESS_FLAP_INTERVAL = int(os.getenv("READINESS_FLAP_INTERVAL", "5"))  # Sekunden zwischen Readiness-Toggles
 SLOW_AFFECTS_PROBES = os.getenv("SLOW_AFFECTS_PROBES", "false").lower() == "true"  # Verzögerung auch für /healthz & /readyz
+FD_EXHAUSTION_LIMIT = int(os.getenv("FD_EXHAUSTION_LIMIT", "1024"))  # Soft-Limit für FD_EXHAUSTION, 0 = Limit nicht ändern
 
 PROBE_PATHS = ("/healthz", "/readyz")
 DISK_WRITE_CHUNK = 1024 * 1024  # Disk-Fill in 1MB-Blöcken, um RAM-Spitzen zu vermeiden
@@ -36,15 +41,22 @@ state = {
     "is_not_ready": False,
     "memory_hoard": [],
     "fd_hoard": [],
-    "current_scenario": "NONE"
+    "current_scenario": "NONE",
+    "chaos_enabled": CHAOS_ENABLED,
 }
 
 # Laufende Hintergrund-Tasks je Szenario-Typ. Die Referenz verhindert, dass der GC laufende
 # Tasks einsammelt; pro Name läuft höchstens ein Task (ein Neustart bricht den alten ab).
 background_tasks: dict[str, asyncio.Task] = {}
 
-# Stop-Signal für die aktuell laufenden CPU-Burn-Threads
-cpu_stop = threading.Event()
+# Laufende CPU-Burn-Prozesse. Prozesse statt Threads, weil der GIL Threads auf einen Kern
+# beschränkt und dem Event-Loop Rechenzeit entzieht. forkserver statt fork, da der Prozess
+# bereits Threads hat (uvicorn-Threadpool).
+cpu_procs: list[BaseProcess] = []
+mp_context = multiprocessing.get_context("forkserver")
+
+# Ursprüngliches RLIMIT_NOFILE, solange FD_EXHAUSTION das Limit abgesenkt hat
+_original_nofile: tuple[int, int] | None = None
 
 
 def spawn(name: str, coro) -> None:
@@ -76,10 +88,14 @@ def cancel_background_tasks() -> None:
 
 
 def stop_cpu_burn() -> None:
-    """Signalisiert allen laufenden Burn-Threads das Ende."""
-    global cpu_stop
-    cpu_stop.set()
-    cpu_stop = threading.Event()
+    """Beendet alle laufenden Burn-Prozesse."""
+    with state_lock:
+        procs = list(cpu_procs)
+        cpu_procs.clear()
+    for p in procs:
+        p.terminate()
+    for p in procs:
+        p.join(timeout=1)
 
 
 _sigterm_task: asyncio.Task | None = None
@@ -184,8 +200,31 @@ def cleanup_disk():
     except OSError as e:
         print(f"Could not cleanup disk junk: {e}")
 
+def lower_fd_limit():
+    """Senkt das Soft-Limit auf FD_EXHAUSTION_LIMIT, damit das Szenario sofort greift.
+
+    containerd setzt nofile oft auf 1.048.576, das Erschöpfen würde sonst sehr lange dauern.
+    """
+    global _original_nofile
+    if FD_EXHAUSTION_LIMIT <= 0:
+        return
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if _original_nofile is None:
+        _original_nofile = (soft, hard)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (min(FD_EXHAUSTION_LIMIT, soft), hard))
+
+
+def restore_fd_limit():
+    global _original_nofile
+    if _original_nofile is None:
+        return
+    resource.setrlimit(resource.RLIMIT_NOFILE, _original_nofile)
+    _original_nofile = None
+
+
 def exhaust_fds():
     """Öffnet /dev/null so lange, bis das FD-Limit erreicht ist."""
+    lower_fd_limit()
     try:
         while True:
             fd = open("/dev/null", "r")  # noqa: SIM115
@@ -203,6 +242,7 @@ def cleanup_fds():
             f.close()
         except OSError:
             pass
+    restore_fd_limit()
 
 def reset_state():
     """Bereinigt den Status für das nächste Intervall."""
@@ -227,17 +267,21 @@ def start_oom() -> None:
     spawn("oom", fill_memory())
 
 
-def start_cpu_burn() -> None:
-    """Startet CPU_BURN_THREADS Burn-Threads; bereits laufende werden vorher gestoppt."""
-    stop_cpu_burn()
-    stop = cpu_stop
+def _burn_cpu(duration: int) -> None:
+    """Läuft im Kindprozess; muss auf Modulebene liegen, damit forkserver es importieren kann."""
+    end = time.monotonic() + duration
+    while time.monotonic() < end:
+        pass
 
-    def burn():
-        end = time.time() + CPU_BURN_DURATION
-        while time.time() < end and not stop.is_set():
-            pass
-    for _ in range(CPU_BURN_THREADS):
-        threading.Thread(target=burn, daemon=True).start()
+
+def start_cpu_burn() -> None:
+    """Startet CPU_BURN_WORKERS Burn-Prozesse; bereits laufende werden vorher gestoppt."""
+    stop_cpu_burn()
+    procs = [mp_context.Process(target=_burn_cpu, args=(CPU_BURN_DURATION,), daemon=True) for _ in range(CPU_BURN_WORKERS)]
+    for p in procs:
+        p.start()
+    with state_lock:
+        cpu_procs.extend(procs)
 
 
 def start_readiness_flap() -> None:
@@ -255,6 +299,10 @@ async def chaos_loop():
     await asyncio.sleep(CHAOS_STARTUP_DELAY)
 
     while True:
+        if not state["chaos_enabled"]:
+            await asyncio.sleep(1)
+            continue
+
         reset_state()
         scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE", "FD_EXHAUSTION", "READINESS_FLAP"]
         state["current_scenario"] = random.choice(scenarios)
@@ -265,14 +313,15 @@ async def chaos_loop():
             start_oom()
 
         elif state["current_scenario"] == "CPU_BURN":
-            start_cpu_burn()
+            await asyncio.to_thread(start_cpu_burn)
 
         elif state["current_scenario"] == "SLOW_DEATH":
             state["is_unhealthy"] = True
 
         elif state["current_scenario"] == "CRASH":
             await asyncio.sleep(30)
-            os._exit(1)
+            if state["chaos_enabled"]:  # Pause während der Vorwarnzeit verhindert den Crash
+                os._exit(1)
 
         elif state["current_scenario"] == "DISK_FILL":
             await asyncio.to_thread(fill_disk)
@@ -297,6 +346,7 @@ def get_status():
         fd_hoard_count = len(state["fd_hoard"])
     return {
         "current_scenario": state["current_scenario"],
+        "chaos_enabled": state["chaos_enabled"],
         "is_unhealthy": state["is_unhealthy"],
         "is_not_ready": state["is_not_ready"],
         "request_count": request_count,
@@ -304,10 +354,11 @@ def get_status():
         "fd_hoard_count": fd_hoard_count,
         "config": {
             "chaos_interval": CHAOS_INTERVAL,
-            "cpu_burn_threads": CPU_BURN_THREADS,
+            "cpu_burn_workers": CPU_BURN_WORKERS,
             "cpu_burn_duration": CPU_BURN_DURATION,
             "memory_chunk_size": MEMORY_CHUNK_SIZE,
-            "disk_fill_size_mb": DISK_FILL_SIZE_MB
+            "disk_fill_size_mb": DISK_FILL_SIZE_MB,
+            "fd_exhaustion_limit": FD_EXHAUSTION_LIMIT,
         }
     }
 
@@ -320,11 +371,24 @@ def manual_reset():
     return {"message": "Chaos state reset", "state": state["current_scenario"]}
 
 
+@app.post("/chaos/pause")
+def chaos_pause():
+    """Stoppt neue automatische Zyklen; das aktive Szenario läuft weiter bis /chaos/reset."""
+    state["chaos_enabled"] = False
+    return {"chaos_enabled": False}
+
+
+@app.post("/chaos/resume")
+def chaos_resume():
+    state["chaos_enabled"] = True
+    return {"chaos_enabled": True}
+
+
 @app.post("/chaos/cpu")
-async def manual_cpu():
+def manual_cpu():
     state["current_scenario"] = "MANUAL_CPU"
     start_cpu_burn()
-    return {"message": f"Manual CPU spike started ({CPU_BURN_THREADS} threads)"}
+    return {"message": f"Manual CPU spike started ({CPU_BURN_WORKERS} processes)"}
 
 @app.post("/chaos/oom")
 async def manual_oom():

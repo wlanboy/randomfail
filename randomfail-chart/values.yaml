@@ -24,16 +24,18 @@ volume:
   mountPath: /tmp
 
 chaos:
+  enabled: true              # false: kein automatischer Chaos-Loop (nur manuelle Endpoints)
   interval: 300              # Sekunden zwischen Chaos-Zyklen
   startupDelay: 10           # Initialer Puffer beim Start
   memoryChunkSize: 1000000   # Bytes pro Memory-Chunk (1MB)
   diskFillSizeMB: 110        # MB für Disk-Fill
-  cpuBurnThreads: 2          # Anzahl paralleler CPU-Threads
+  cpuBurnWorkers: 2          # Anzahl paralleler CPU-Burn-Prozesse (je ein Kern)
   cpuBurnDuration: 120       # Sekunden CPU-Burn Dauer (max CHAOS_INTERVAL / 2)
   slowResponseDelay: 5       # Sekunden künstliche Verzögerung pro Request (SLOW_RESPONSE)
   slowAffectsProbes: false   # true: auch /healthz & /readyz verzögern (führt zu Liveness-Restarts)
   sigtermDelay: 30           # Sekunden bis zum sauberen Shutdown nach SIGTERM
   readinessFlapInterval: 5   # Sekunden zwischen Readiness-Toggles (READINESS_FLAP)
+  fdExhaustionLimit: 1024    # Soft-Limit nofile für FD_EXHAUSTION, 0 = Limit nicht ändern
 
 ingress:
   # istio | traefik | none
