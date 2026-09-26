@@ -12,16 +12,79 @@ service:
   port: 8080
   targetPort: 8080
 
+# Volume für /tmp (DISK_FILL schreibt hierhin)
+#   pvc:      PersistentVolumeClaim – Disk voll → ENOSPC, Daten überleben Pod-Neustarts
+#   emptyDir: emptyDir mit sizeLimit – bei Überschreitung evicted der Kubelet den Pod
+volume:
+  type: pvc
+  mountPath: /tmp
+  emptyDir:
+    sizeLimit: "100Mi"       # < chaos.diskFillSizeMB, damit DISK_FILL eine Eviction auslöst
+    medium: ""               # "" = Node-Disk, "Memory" = tmpfs (zählt gegen das Memory-Limit)
+
 pvc:
-  enabled: true
   name: randomfail-tmp-pvc
+  # ReadWriteOnce: nur mit replicaCount 1, Deployment nutzt dann Strategy Recreate
+  # ReadWriteMany: erlaubt replicaCount > 1 und RollingUpdate
   accessModes:
     - ReadWriteOnce
   storageClassName: ""
   size: "100Mi"
 
-volume:
-  mountPath: /tmp
+# Leer: sigtermDelay + terminationGraceBuffer (sauberer Exit vor SIGKILL).
+# Explizit kleiner als sigtermDelay setzen, um den SIGKILL-Pfad zu testen.
+terminationGracePeriodSeconds:
+terminationGraceBuffer: 10
+
+# Nur bei replicaCount > 1 gerendert
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+
+# Bei replicaCount > 1: Pods bevorzugt auf verschiedene Nodes verteilen
+topologySpread:
+  enabled: true
+  whenUnsatisfiable: ScheduleAnyway
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"          # Bei OOM_KILL wird der Pod hier gekillt
+    cpu: "200m"              # Bei CPU_BURN siehst du hier Throttling
+
+probes:
+  startup:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 12     # 60s Fenster für langsame Starts
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+# UID/GID entsprechen dem appuser aus dem Dockerfile
+podSecurityContext:
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true   # /tmp ist ein Volume, sonst schreibt die App nichts
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
 
 chaos:
   enabled: true              # false: kein automatischer Chaos-Loop (nur manuelle Endpoints)

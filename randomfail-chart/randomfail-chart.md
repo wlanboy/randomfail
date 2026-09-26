@@ -17,8 +17,9 @@ gesteuert über den Schalter `ingress.controller`.
 
 Das Chart rendert folgende Kubernetes-Ressourcen:
 
-- **Deployment** (`templates/deployment.yaml`) – 1 Replica des Containers `wlanboy/randomfail`, mit Startup-, Liveness- und Readiness-Probe (`/healthz`, `/readyz`) sowie den `CHAOS_*`-Umgebungsvariablen für die Fehlerinjektion.
-- **PersistentVolumeClaim** (`templates/pvc.yaml`, nur bei `pvc.enabled: true`) – wird als `/tmp`-Volume gemountet, u. a. für `DISK_FILL`-Chaos.
+- **Deployment** (`templates/deployment.yaml`) – `replicaCount` Replicas des Containers `wlanboy/randomfail`, mit Startup-, Liveness- und Readiness-Probe (`/healthz`, `/readyz`), gehärtetem `securityContext` (non-root, read-only Root-FS, keine Capabilities) sowie den `CHAOS_*`-Umgebungsvariablen für die Fehlerinjektion. Das Label `sidecar.istio.io/inject` wird nur bei `ingress.controller: istio` gesetzt.
+- **PodDisruptionBudget** (`templates/pdb.yaml`, nur bei `podDisruptionBudget.enabled: true` und `replicaCount > 1`).
+- **PersistentVolumeClaim** (`templates/pvc.yaml`, nur bei `volume.type: pvc`) – wird als `/tmp`-Volume gemountet, u. a. für `DISK_FILL`-Chaos. Bei `volume.type: emptyDir` wird stattdessen ein `emptyDir` mit `sizeLimit` gemountet.
 - **Service** (`templates/service.yaml`) – ClusterIP-Service, leitet Traffic an die Pods weiter.
 - **Gateway** (`templates/gateway.yaml`, nur bei `ingress.controller: istio`) – Istio `Gateway` auf Port 80/HTTP und optional 443/HTTPS (bei `certManager.enabled: true`) für die konfigurierten Hosts.
 - **VirtualService** (`templates/virtualservice.yaml`, nur bei `ingress.controller: istio`) – Istio `VirtualService`, routet Traffic vom Gateway (und dem internen `mesh`-Gateway) zum Service.
@@ -42,9 +43,17 @@ fehlen.
 | `service.name` | Name des Service-Objekts | `randomfail-svc` |
 | `service.type` | Service-Typ | `ClusterIP` |
 | `service.port` / `service.targetPort` | Service- und Container-Port | `8080` |
-| `pvc.enabled` | PVC für `/tmp` anlegen | `true` |
-| `pvc.name` / `pvc.accessModes` / `pvc.storageClassName` / `pvc.size` | PVC-Einstellungen | `randomfail-tmp-pvc`, `[ReadWriteOnce]`, `""`, `100Mi` |
+| `volume.type` | Volume für `/tmp`: `pvc` oder `emptyDir` | `pvc` |
 | `volume.mountPath` | Mountpfad des `/tmp`-Volumes im Container | `/tmp` |
+| `volume.emptyDir.sizeLimit` / `volume.emptyDir.medium` | emptyDir-Einstellungen (nur bei `volume.type: emptyDir`) | `100Mi`, `""` |
+| `pvc.name` / `pvc.accessModes` / `pvc.storageClassName` / `pvc.size` | PVC-Einstellungen (nur bei `volume.type: pvc`) | `randomfail-tmp-pvc`, `[ReadWriteOnce]`, `""`, `100Mi` |
+| `terminationGracePeriodSeconds` | Explizite Grace Period; leer = `chaos.sigtermDelay + terminationGraceBuffer` | leer |
+| `terminationGraceBuffer` | Puffer auf `sigtermDelay` für die abgeleitete Grace Period | `10` |
+| `resources` | Requests/Limits des Containers | `64Mi`/`100m` → `256Mi`/`200m` |
+| `probes.startup` / `probes.liveness` / `probes.readiness` | Timing der Probes (Pfade und Port sind fest) | siehe `values.yaml` |
+| `podSecurityContext` / `securityContext` | Pod- bzw. Container-SecurityContext | `fsGroup: 1000`, non-root UID 1000, read-only Root-FS, `drop: [ALL]` |
+| `podDisruptionBudget.enabled` / `.maxUnavailable` | PDB anlegen (nur bei `replicaCount > 1`) | `false`, `1` |
+| `topologySpread.enabled` / `.whenUnsatisfiable` | Pods über Nodes verteilen (nur bei `replicaCount > 1`) | `true`, `ScheduleAnyway` |
 | `chaos.*` | Steuerung der Chaos-Umgebungsvariablen (Intervall, Startup-Delay, Memory/Disk/CPU-Chaos, Slow-Response, SIGTERM-Delay, Readiness-Flap) | siehe `values.yaml` |
 | `ingress.controller` | Aktiver Ingress-Weg: `istio`, `traefik` oder `none` | `istio` |
 | `ingress.hosts` | Liste externer Hostnamen für den Ingress (gilt für beide Controller) | `randomfail.tp.lan`, `randomfail.gmk.lan`, `randomfail.localhost` |
@@ -55,6 +64,21 @@ fehlen.
 | `certManager.enabled` | cert-manager `Certificate` für das Istio-TLS-Secret erzeugen | `true` |
 | `certManager.issuerRef.kind` / `certManager.issuerRef.name` | cert-manager Issuer-Referenz | `ClusterIssuer`, `local-ca-issuer` |
 | `certManager.dnsNames` | SANs für das Zertifikat | `randomfail.tp.lan`, `randomfail.gmk.lan`, `randomfail.localhost` |
+
+### /tmp-Volume, Replicas und Shutdown
+
+- **`volume.type: pvc`** – `DISK_FILL` läuft in `ENOSPC`, das PVC bleibt nach einem
+  Neustart gefüllt. Mit `ReadWriteOnce` ist nur `replicaCount: 1` erlaubt (sonst
+  bricht das Rendering mit einer Fehlermeldung ab), und das Deployment nutzt
+  `strategy: Recreate`, damit beim Rolling Update auf einen anderen Node kein
+  Multi-Attach-Fehler entsteht. Mehrere Replicas brauchen `ReadWriteMany`.
+- **`volume.type: emptyDir`** – `DISK_FILL` überschreitet `sizeLimit`, der Kubelet
+  evicted den Pod (`kubectl get pod` → `Evicted`, Event `ephemeral local storage
+  usage exceeds the total limit`). Funktioniert mit beliebig vielen Replicas.
+- **`terminationGracePeriodSeconds`** – ohne expliziten Wert liegt die Grace Period
+  um `terminationGraceBuffer` über `chaos.sigtermDelay`, der Prozess beendet sich also
+  sauber. Wer den SIGKILL-Pfad sehen will, setzt sie bewusst niedriger, z. B.
+  `--set terminationGracePeriodSeconds=15` (Exit-Code 137).
 
 Für die Wahl des Controllers stehen zwei schlanke Override-Dateien bereit,
 statt `ingress.controller` von Hand setzen zu müssen:

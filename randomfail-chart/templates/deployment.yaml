@@ -1,9 +1,22 @@
+{{- $usePvc := eq .Values.volume.type "pvc" }}
+{{- $pvcShared := has "ReadWriteMany" .Values.pvc.accessModes }}
+{{- if not (has .Values.volume.type (list "pvc" "emptyDir")) }}
+{{- fail (printf "volume.type muss 'pvc' oder 'emptyDir' sein, nicht '%s'" .Values.volume.type) }}
+{{- end }}
+{{- if and $usePvc (not $pvcShared) (gt (int .Values.replicaCount) 1) }}
+{{- fail "replicaCount > 1 mit einem RWO-PVC führt zu Multi-Attach-Fehlern: pvc.accessModes auf ReadWriteMany oder volume.type auf emptyDir setzen" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.deploymentName }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if and $usePvc (not $pvcShared) }}
+  # RWO-Volume: alter Pod muss das Volume freigeben, bevor der neue startet
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app: {{ .Values.deploymentName }}
@@ -11,8 +24,26 @@ spec:
     metadata:
       labels:
         app: {{ .Values.deploymentName }}
+        {{- if eq .Values.ingress.controller "istio" }}
         sidecar.istio.io/inject: "true"
+        {{- end }}
     spec:
+      {{- if kindIs "invalid" .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ add .Values.chaos.sigtermDelay .Values.terminationGraceBuffer }}
+      {{- else }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if and .Values.topologySpread.enabled (gt (int .Values.replicaCount) 1) }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app: {{ .Values.deploymentName }}
+      {{- end }}
       containers:
         - name: {{ .Values.deploymentName }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -46,41 +77,39 @@ spec:
               value: {{ .Values.chaos.fdExhaustionLimit | int | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
-            requests:
-              memory: "64Mi"
-              cpu: "100m"
-            limits:
-              memory: "256Mi"  # Bei OOM_PRESSURE wird der Pod hier gekillt
-              cpu: "200m"     # Bei CPU_SPIKE siehst du hier Throttling
-
+            {{- toYaml .Values.resources | nindent 12 }}
           startupProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 12  # 60s Fenster für langsame Starts
+            {{- toYaml .Values.probes.startup | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 10 # Etwas mehr Puffer für den App-Start
-            periodSeconds: 5
-            timeoutSeconds: 2 
-            failureThreshold: 3
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /readyz
               port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 2 
-            failureThreshold: 3
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
           volumeMounts:
             - name: tmp-volume
               mountPath: {{ .Values.volume.mountPath }}
       volumes:
         - name: tmp-volume
+          {{- if $usePvc }}
           persistentVolumeClaim:
             claimName: {{ .Values.pvc.name }}
+          {{- else }}
+          emptyDir:
+            {{- with .Values.volume.emptyDir.medium }}
+            medium: {{ . }}
+            {{- end }}
+            {{- with .Values.volume.emptyDir.sizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+          {{- end }}
