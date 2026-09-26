@@ -106,6 +106,14 @@ helm install randomfail ./randomfail-chart -n randomfail --create-namespace -f r
 helm status randomfail -n randomfail
 ```
 
+Mit local kind:
+
+```bash
+helm upgrade --install randomfail ./randomfail-chart -n randomfail-test --create-namespace \
+  --set image.repository=randomfail --set image.tag=dev --set image.pullPolicy=Never \
+  --set certManager.enabled=false --set chaos.enabled=false
+```
+
 Das `istio-injection`-Label wird nur benötigt, wenn `ingress.controller:
 istio` aktiv ist (der Pod erhält sonst keinen Sidecar, obwohl das
 Deployment-Template `sidecar.istio.io/inject: "true"` setzt).
