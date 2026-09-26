@@ -17,7 +17,7 @@ Zusätzlich lassen sich alle Szenarien jederzeit manuell über HTTP‑Endpoints 
 ## Simulierte Fehlerzustände
 
 ### OOM_KILL – Speichererschöpfung
-Der Service füllt schrittweise den Arbeitsspeicher (1 MB pro Sekunde). Sobald das Memory-Limit des Containers erreicht ist, beendet der Linux-Kernel den Prozess mit einem OOMKill-Signal.
+Der Service füllt schrittweise und ohne Obergrenze den Arbeitsspeicher (1 MB pro Sekunde). Sobald das Memory-Limit des Containers erreicht ist, beendet der Linux-Kernel den Prozess mit einem OOMKill-Signal.
 
 **Kubernetes-Reaktion:**
 - Pod-Status wechselt zu `OOMKilled`
@@ -72,10 +72,11 @@ Der Service schreibt eine große Binärdatei auf das eingebundene PersistentVolu
 ---
 
 ### SLOW_RESPONSE – Antwort-Verzögerung
-Jeder HTTP-Request wird künstlich um eine konfigurierbare Anzahl von Sekunden verzögert. Dies betrifft auch die Probe-Endpunkte.
+Jeder HTTP-Request wird künstlich um eine konfigurierbare Anzahl von Sekunden verzögert. Die Probe-Endpunkte `/healthz` und `/readyz` sind standardmäßig ausgenommen, der Pod bleibt also am Leben und liefert nur langsame Antworten.
 
 **Kubernetes-Reaktion:**
-- Liveness- und Readiness-Probe überschreiten `timeoutSeconds` → Probe gilt als fehlgeschlagen
+- Standard: Probes bleiben grün, Clients und Ingress/Mesh sehen hohe Latenz bzw. eigene Timeouts
+- Mit `SLOW_AFFECTS_PROBES=true`: Liveness- und Readiness-Probe überschreiten `timeoutSeconds` → Probe gilt als fehlgeschlagen
 - Nach `failureThreshold` Timeouts: Container-Neustart (Liveness) bzw. Traffic-Ausschluss (Readiness)
 - Simuliert langsame Datenbankabfragen, überlastete Downstream-Services oder GC-Pausen
 - Sichtbar in: `kubectl describe pod` → Events: `Liveness probe failed: context deadline exceeded`
@@ -168,6 +169,7 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 | `CPU_BURN_THREADS` | `2` | Anzahl paralleler Threads im CPU_BURN-Szenario |
 | `CPU_BURN_DURATION` | `120` | Sekunden Dauer des CPU-Burns (empfohlen: max. CHAOS_INTERVAL / 2) |
 | `SLOW_RESPONSE_DELAY` | `5` | Sekunden künstliche Verzögerung pro Request im SLOW_RESPONSE-Szenario |
+| `SLOW_AFFECTS_PROBES` | `false` | `true`: SLOW_RESPONSE verzögert auch `/healthz` und `/readyz` |
 | `SIGTERM_DELAY` | `30` | Sekunden Wartezeit nach SIGTERM vor dem Prozess-Exit |
 | `READINESS_FLAP_INTERVAL` | `5` | Sekunden zwischen Readiness-Toggles im READINESS_FLAP-Szenario |
 

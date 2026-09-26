@@ -34,6 +34,8 @@ spec:
               value: {{ .Values.chaos.cpuBurnDuration | int | quote }}
             - name: SLOW_RESPONSE_DELAY
               value: {{ .Values.chaos.slowResponseDelay | int | quote }}
+            - name: SLOW_AFFECTS_PROBES
+              value: {{ .Values.chaos.slowAffectsProbes | toString | quote }}
             - name: SIGTERM_DELAY
               value: {{ .Values.chaos.sigtermDelay | int | quote }}
             - name: READINESS_FLAP_INTERVAL

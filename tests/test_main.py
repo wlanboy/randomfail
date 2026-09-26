@@ -14,7 +14,16 @@ os.environ["DISK_FILL_SIZE_MB"] = "1"  # Smaller for tests
 os.environ["CPU_BURN_THREADS"] = "1"
 os.environ["CPU_BURN_DURATION"] = "1"
 
-from main import DISK_JUNK_PATH, app, cleanup_disk, fill_disk, reset_state, state
+import main
+from main import (
+    DISK_JUNK_PATH,
+    app,
+    background_tasks,
+    cleanup_disk,
+    fill_disk,
+    reset_state,
+    state,
+)
 
 
 @pytest.fixture
@@ -160,6 +169,38 @@ class TestChaosEndpoints:
         assert "Manual CPU spike started" in data["message"]
         assert state["current_scenario"] == "MANUAL_CPU"
 
+    def test_chaos_cpu_repeated_stops_previous_burn(self, client):
+        """Repeated POST /chaos/cpu signals the previous burn threads to stop."""
+        client.post("/chaos/cpu")
+        first_stop = main.cpu_stop
+        client.post("/chaos/cpu")
+        assert first_stop.is_set()
+        assert not main.cpu_stop.is_set()
+
+    def test_chaos_reset_stops_cpu_burn(self, client):
+        """POST /chaos/reset signals running burn threads to stop."""
+        client.post("/chaos/cpu")
+        stop = main.cpu_stop
+        client.post("/chaos/reset")
+        assert stop.is_set()
+
+    def test_chaos_flap_runs_single_task(self, client):
+        """Repeated POST /chaos/flap keeps exactly one flap task."""
+        client.post("/chaos/flap")
+        first = background_tasks["flap"]
+        client.post("/chaos/flap")
+        second = background_tasks["flap"]
+        assert first is not second
+        assert first.cancelled() or first.cancelling()
+
+    def test_chaos_reset_cancels_background_tasks(self, client):
+        """POST /chaos/reset cancels flap task and restores readiness."""
+        client.post("/chaos/flap")
+        assert "flap" in background_tasks
+        client.post("/chaos/reset")
+        assert background_tasks == {}
+        assert client.get("/readyz").status_code == 200
+
     def test_chaos_oom(self, client):
         """POST /chaos/oom adds memory pressure."""
         initial_len = len(state["memory_hoard"])
@@ -169,7 +210,7 @@ class TestChaosEndpoints:
 
         assert "Manual OOM pressure added" in data["message"]
         assert state["current_scenario"] == "MANUAL_OOM"
-        assert len(state["memory_hoard"]) > initial_len
+        assert len(state["memory_hoard"]) == initial_len + 100
 
     def test_chaos_disk(self, client, clean_disk):
         """POST /chaos/disk starts disk fill."""
@@ -288,3 +329,27 @@ class TestChaosScenarios:
 
         assert health_response.status_code == 200
         assert ready_response.status_code == 200
+
+    def test_slow_response_skips_probes(self, client, monkeypatch):
+        """SLOW_RESPONSE does not delay probe endpoints by default."""
+        monkeypatch.setattr(main, "SLOW_RESPONSE_DELAY", 1)
+        state["current_scenario"] = "SLOW_RESPONSE"
+
+        start = time.monotonic()
+        client.get("/healthz")
+        client.get("/readyz")
+        assert time.monotonic() - start < 0.5
+
+        start = time.monotonic()
+        client.get("/status")
+        assert time.monotonic() - start >= 1
+
+    def test_slow_response_affects_probes_when_enabled(self, client, monkeypatch):
+        """SLOW_AFFECTS_PROBES=true delays probe endpoints too."""
+        monkeypatch.setattr(main, "SLOW_RESPONSE_DELAY", 1)
+        monkeypatch.setattr(main, "SLOW_AFFECTS_PROBES", True)
+        state["current_scenario"] = "SLOW_RESPONSE"
+
+        start = time.monotonic()
+        client.get("/healthz")
+        assert time.monotonic() - start >= 1
