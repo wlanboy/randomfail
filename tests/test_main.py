@@ -297,7 +297,10 @@ class TestHelperFunctions:
         try:
             exhaust_fds()
             assert resource.getrlimit(resource.RLIMIT_NOFILE)[0] == limit
-            assert 0 < len(state["fd_hoard"]) <= 21  # +1: FD von listdir ist wieder frei
+            # Anzahl hängt davon ab, wie viele FDs zwischendurch frei wurden (GC, vorige Tests),
+            # daher nur gegen das Limit prüfen: jede FD-Nummer liegt unter dem Soft-Limit.
+            assert 0 < len(state["fd_hoard"]) <= limit
+            assert max(f.fileno() for f in state["fd_hoard"]) < limit
         finally:
             cleanup_fds()
         assert resource.getrlimit(resource.RLIMIT_NOFILE) == original
