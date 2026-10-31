@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from multiprocessing.process import BaseProcess
 
 from fastapi import FastAPI, Request, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 # Konfiguration via Environment-Variablen
@@ -137,6 +138,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 templates = Jinja2Templates(directory="templates")
 
 @app.middleware("http")
@@ -177,7 +180,8 @@ async def index(request: Request):
         "index.html",
         {
             "TIME": datetime.datetime.now(tz=datetime.UTC).astimezone().strftime("%H:%M:%S"),
-            "SCENARIO": state["current_scenario"]
+            "SCENARIO": state["current_scenario"],
+            "CHAOS_ENABLED": CHAOS_ENABLED,
         }
     )
 

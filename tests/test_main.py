@@ -111,6 +111,32 @@ class TestIndexEndpoint:
             response = client.get("/")
             assert response.status_code == 500, f"Expected 500 at count={multiple}"
 
+    def test_index_shows_resource_chaos_buttons_when_enabled(self, client, monkeypatch):
+        """CPU/OOM/Disk buttons are rendered when CHAOS_ENABLED=true."""
+        monkeypatch.setattr(main, "CHAOS_ENABLED", True)
+        state["request_count"] = 0
+        response = client.get("/")
+        for action in ("/chaos/cpu", "/chaos/oom", "/chaos/disk"):
+            assert f'action="{action}"' in response.text
+
+    def test_index_hides_resource_chaos_buttons_when_disabled(self, client, monkeypatch):
+        """CPU/OOM/Disk buttons are not rendered when CHAOS_ENABLED=false."""
+        monkeypatch.setattr(main, "CHAOS_ENABLED", False)
+        state["request_count"] = 0
+        response = client.get("/")
+        for action in ("/chaos/cpu", "/chaos/oom", "/chaos/disk"):
+            assert f'action="{action}"' not in response.text
+        assert 'action="/chaos/reset"' in response.text
+
+    def test_index_links_stylesheet(self, client):
+        """GET / references the stylesheet, which is served from /static."""
+        state["request_count"] = 0
+        response = client.get("/")
+        assert "/static/style.css" in response.text
+        css = client.get("/static/style.css")
+        assert css.status_code == 200
+        assert "text/css" in css.headers["content-type"]
+
     def test_index_increments_request_count(self, client):
         """GET / increments request counter."""
         state["request_count"] = 0

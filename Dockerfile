@@ -32,6 +32,7 @@ RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
 # Copy application files
 COPY --chown=appuser:appuser main.py /app/
 COPY --chown=appuser:appuser templates/ /app/templates/
+COPY --chown=appuser:appuser static/ /app/static/
 
 # Use non-root user
 USER appuser
