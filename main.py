@@ -172,7 +172,7 @@ async def index(request: Request):
         state["request_count"] += 1
         count = state["request_count"]
 
-    if count % 3 == 0:
+    if CHAOS_ENABLED and count % 3 == 0:
         return Response("Chaos Error", status_code=500)
 
     return templates.TemplateResponse(

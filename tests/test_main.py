@@ -111,6 +111,14 @@ class TestIndexEndpoint:
             response = client.get("/")
             assert response.status_code == 500, f"Expected 500 at count={multiple}"
 
+    def test_index_no_chaos_error_when_disabled(self, client, monkeypatch):
+        """GET / never returns 500 when CHAOS_ENABLED=false."""
+        monkeypatch.setattr(main, "CHAOS_ENABLED", False)
+        for multiple in [3, 6, 9]:
+            state["request_count"] = multiple - 1
+            response = client.get("/")
+            assert response.status_code == 200, f"Unexpected error at count={multiple}"
+
     def test_index_shows_resource_chaos_buttons_when_enabled(self, client, monkeypatch):
         """CPU/OOM/Disk buttons are rendered when CHAOS_ENABLED=true."""
         monkeypatch.setattr(main, "CHAOS_ENABLED", True)
