@@ -164,7 +164,7 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `CHAOS_ENABLED` | `true` | `false`: automatischer Chaos-Loop startet pausiert (per `/chaos/resume` aktivierbar), `GET /` liefert keine HTTP-500-Fehler |
+| `CHAOS_ENABLED` | `true` | `false`: automatischer Chaos-Loop startet pausiert (per `/chaos/resume` aktivierbar), `GET /` liefert keine HTTP-500-Fehler, Startseite zeigt nur den Crash-Button |
 | `CHAOS_INTERVAL` | `300` | Sekunden zwischen automatischen Chaos-Zyklen |
 | `CHAOS_STARTUP_DELAY` | `10` | Sekunden Wartezeit nach dem Start vor dem ersten Zyklus |
 | `MEMORY_CHUNK_SIZE` | `1000000` | Bytes pro Speicher-Chunk im OOM-Szenario (1 MB) |
