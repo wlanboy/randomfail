@@ -160,7 +160,7 @@ Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 
 ## Konfiguration
 
-Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfail-chart/values.yaml`):
+Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfail-chart/values.yaml`, lokal/Docker über die Datei [`.env`](.env) mit allen Defaults):
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -194,7 +194,7 @@ uv run ruff check .
 uv run pyright .
 uv pip compile pyproject.toml -o requirements.txt
 
-uv run uvicorn main:app --host 0.0.0.0 --port 8080
+uv run --env-file .env uvicorn main:app --host 0.0.0.0 --port 8080
 ```
 
 Erreichbar unter: http://localhost:8080
@@ -203,7 +203,10 @@ Erreichbar unter: http://localhost:8080
 
 ```bash
 docker build -t randomfail .
-docker run -p 8080:8080 \
+docker run -p 8080:8080 --env-file .env randomfail
+
+# Einzelne Werte überschreiben (-e hat Vorrang vor --env-file)
+docker run -p 8080:8080 --env-file .env \
   -e CHAOS_INTERVAL=60 \
   -e SLOW_RESPONSE_DELAY=3 \
   randomfail

@@ -10,3 +10,4 @@ mvnw.cmd
 .idea/
 *.iml
 .DS_Store
+.env
