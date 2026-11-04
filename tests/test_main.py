@@ -119,22 +119,22 @@ class TestIndexEndpoint:
             response = client.get("/")
             assert response.status_code == 200, f"Unexpected error at count={multiple}"
 
-    def test_index_shows_resource_chaos_buttons_when_enabled(self, client, monkeypatch):
-        """CPU/OOM/Disk buttons are rendered when CHAOS_ENABLED=true."""
+    def test_index_shows_all_chaos_buttons_when_enabled(self, client, monkeypatch):
+        """All chaos buttons are rendered when CHAOS_ENABLED=true."""
         monkeypatch.setattr(main, "CHAOS_ENABLED", True)
         state["request_count"] = 0
         response = client.get("/")
-        for action in ("/chaos/cpu", "/chaos/oom", "/chaos/disk"):
+        for action in ("/chaos/cpu", "/chaos/oom", "/chaos/disk", "/chaos/unhealthy", "/chaos/reset", "/chaos/crash"):
             assert f'action="{action}"' in response.text
 
-    def test_index_hides_resource_chaos_buttons_when_disabled(self, client, monkeypatch):
-        """CPU/OOM/Disk buttons are not rendered when CHAOS_ENABLED=false."""
+    def test_index_shows_only_crash_button_when_disabled(self, client, monkeypatch):
+        """Only the crash button is rendered when CHAOS_ENABLED=false."""
         monkeypatch.setattr(main, "CHAOS_ENABLED", False)
         state["request_count"] = 0
         response = client.get("/")
-        for action in ("/chaos/cpu", "/chaos/oom", "/chaos/disk"):
+        for action in ("/chaos/cpu", "/chaos/oom", "/chaos/disk", "/chaos/unhealthy", "/chaos/reset"):
             assert f'action="{action}"' not in response.text
-        assert 'action="/chaos/reset"' in response.text
+        assert 'action="/chaos/crash"' in response.text
 
     def test_index_links_stylesheet(self, client):
         """GET / references the stylesheet, which is served from /static."""
