@@ -1,11 +1,11 @@
 [project]
 name = "randomfail"
 version = "0.1.0"
-description = "Add your description here"
+description = "Absichtlich instabiler FastAPI-Service zur Simulation von Ausfallszenarien in Kubernetes"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.162.2",
+    "fastapi>=0.162.7",
     "jinja2>=3.1.6",
     "uvicorn>=0.54.0",
 ]
@@ -14,7 +14,7 @@ dependencies = [
 test = [
     "httpx2>=2.16.0",
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1",
+    "pytest-asyncio>=1.5.0",
 ]
 
 [tool.pytest.ini_options]
@@ -25,5 +25,5 @@ dev = [
     "httpx2>=2.16.0",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
-    "ruff>=0.17.4",
+    "ruff>=0.17.5",
 ]
