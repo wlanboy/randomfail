@@ -25,8 +25,14 @@ jobs:
           enable-cache: true # Enormer Speed-Boost für Folgeruns
 
       - name: Install dependencies
-        # --frozen stellt sicher, dass exakt deine uv.lock verwendet wird
-        run: uv sync --frozen
+        # --locked bricht ab, wenn uv.lock nicht zur pyproject.toml passt
+        run: uv sync --locked
+
+      - name: Check requirements.txt
+        # requirements.txt muss dem Export aus uv.lock entsprechen, sonst baut das Image andere Versionen
+        run: |
+          uv export --format requirements-txt --no-hashes --no-dev -o requirements.txt
+          git diff --exit-code requirements.txt
 
       - name: Lint & Syntax (Ruff)
         # Ersetzt das manuelle py_compile für jede Datei. 
