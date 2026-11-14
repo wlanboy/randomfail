@@ -27,9 +27,7 @@ LABEL org.opencontainers.image.title="randomfail" \
       org.opencontainers.image.base.name="python:3.14-slim"
 
 # Verhindert, dass Python .pyc Dateien schreibt und sorgt für sofortige Log-Ausgabe
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/opt/venv/bin:$PATH"
 
 # Create non-root user
 RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser
