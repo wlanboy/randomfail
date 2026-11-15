@@ -1,6 +1,8 @@
 import asyncio
+import errno
 import os
 import resource
+import socket
 import subprocess
 import sys
 import time
@@ -311,6 +313,28 @@ class TestHelperFunctions:
         # Check size (should be ~1MB based on test env var)
         size = os.path.getsize(DISK_JUNK_PATH)
         assert size > 0
+
+    def test_disk_junk_path_contains_hostname(self):
+        """Jeder Pod schreibt in eine eigene Datei unter DISK_FILL_PATH."""
+        assert DISK_JUNK_PATH == os.path.join(main.DISK_FILL_PATH, f"chaos_junk-{socket.gethostname()}.bin")
+
+    def test_fill_disk_logs_enospc_as_expected(self, monkeypatch, capsys):
+        """ENOSPC ist das erwartete Ende des Szenarios."""
+        def full_disk(*args, **kwargs):
+            raise OSError(errno.ENOSPC, "No space left on device")
+        monkeypatch.setattr(main, "open", full_disk, raising=False)
+        fill_disk()
+        out = capsys.readouterr().out
+        assert "Disk full error as expected" in out
+        assert "ERROR" not in out
+
+    def test_fill_disk_logs_other_errors_as_error(self, tmp_path, monkeypatch, capsys):
+        """Andere Fehler (z.B. read-only Root-FS) dürfen nicht als Erfolg geloggt werden."""
+        monkeypatch.setattr(main, "DISK_JUNK_PATH", str(tmp_path / "missing" / "junk.bin"))
+        fill_disk()
+        out = capsys.readouterr().out
+        assert "ERROR: Disk fill failed" in out
+        assert "as expected" not in out
 
     def test_cleanup_disk_removes_file(self, clean_disk):
         """cleanup_disk() removes junk file if exists."""

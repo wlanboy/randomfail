@@ -12,7 +12,7 @@ service:
   port: 8080
   targetPort: 8080
 
-# Volume für /tmp (DISK_FILL schreibt hierhin)
+# Volume für DISK_FILL: die App schreibt nach <mountPath>/chaos_junk-<pod>.bin (Env DISK_FILL_PATH)
 #   pvc:      PersistentVolumeClaim – Disk voll → ENOSPC, Daten überleben Pod-Neustarts
 #   emptyDir: emptyDir mit sizeLimit – bei Überschreitung evicted der Kubelet den Pod
 volume:
@@ -80,7 +80,7 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
-  readOnlyRootFilesystem: true   # /tmp ist ein Volume, sonst schreibt die App nichts
+  readOnlyRootFilesystem: true   # beschreibbar ist nur volume.mountPath
   allowPrivilegeEscalation: false
   capabilities:
     drop:

@@ -1,10 +1,12 @@
 import asyncio
 import datetime
+import errno
 import multiprocessing
 import os
 import random
 import resource
 import signal
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -27,11 +29,14 @@ SIGTERM_DELAY = int(os.getenv("SIGTERM_DELAY", "30"))  # Sekunden bis zum sauber
 READINESS_FLAP_INTERVAL = int(os.getenv("READINESS_FLAP_INTERVAL", "5"))  # Sekunden zwischen Readiness-Toggles
 SLOW_AFFECTS_PROBES = os.getenv("SLOW_AFFECTS_PROBES", "false").lower() == "true"  # Verzögerung auch für /healthz & /readyz
 FD_EXHAUSTION_LIMIT = int(os.getenv("FD_EXHAUSTION_LIMIT", "1024"))  # Soft-Limit für FD_EXHAUSTION, 0 = Limit nicht ändern
+DISK_FILL_PATH = os.getenv("DISK_FILL_PATH", "/tmp")  # Verzeichnis für DISK_FILL, im Chart = volume.mountPath
 
 PROBE_PATHS = ("/healthz", "/readyz")
 DISK_WRITE_CHUNK = 1024 * 1024  # Disk-Fill in 1MB-Blöcken, um RAM-Spitzen zu vermeiden
 
-DISK_JUNK_PATH = "/tmp/chaos_junk.bin"
+# Hostname im Dateinamen: bei einem RWX-Volume schreibt jeder Pod in seine eigene Datei,
+# und ein reset in einem Pod löscht nicht die Dateien der anderen.
+DISK_JUNK_PATH = os.path.join(DISK_FILL_PATH, f"chaos_junk-{socket.gethostname()}.bin")
 
 # Thread-safe Lock für gemeinsam genutzten State (request_count, fd_hoard, memory_hoard)
 state_lock = threading.Lock()
@@ -193,7 +198,11 @@ def fill_disk():
         with open(DISK_JUNK_PATH, "wb") as f:
             f.writelines(os.urandom(DISK_WRITE_CHUNK) for _ in range(DISK_FILL_SIZE_MB * 1024 * 1024 // DISK_WRITE_CHUNK))
     except OSError as e:
-        print(f"Disk full error as expected: {e}")
+        if e.errno == errno.ENOSPC:
+            print(f"Disk full error as expected: {e}")
+        else:
+            # z.B. EROFS oder EACCES: DISK_FILL_PATH liegt nicht auf dem beschreibbaren Volume
+            print(f"ERROR: Disk fill failed, nothing was filled: {e}")
 
 
 def cleanup_disk():
@@ -307,7 +316,11 @@ async def chaos_loop():
             await asyncio.sleep(1)
             continue
 
-        reset_state()
+        # Tasks zuerst im Loop abbrechen, damit kein OOM-Task mehr nachschiebt, während der
+        # Thread aufräumt. Der Rest (join() der Burn-Prozesse, Disk, FDs) blockiert und läuft
+        # im Thread, sonst hängen währenddessen alle Requests inklusive Probes.
+        cancel_background_tasks()
+        await asyncio.to_thread(reset_state)
         scenarios = ["OOM_KILL", "CPU_BURN", "SLOW_DEATH", "STABLE", "CRASH", "DISK_FILL", "SLOW_RESPONSE", "FD_EXHAUSTION", "READINESS_FLAP"]
         state["current_scenario"] = random.choice(scenarios)
 
@@ -362,6 +375,7 @@ def get_status():
             "cpu_burn_duration": CPU_BURN_DURATION,
             "memory_chunk_size": MEMORY_CHUNK_SIZE,
             "disk_fill_size_mb": DISK_FILL_SIZE_MB,
+            "disk_fill_path": DISK_JUNK_PATH,
             "fd_exhaustion_limit": FD_EXHAUSTION_LIMIT,
         }
     }

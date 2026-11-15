@@ -169,6 +169,7 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 | `CHAOS_STARTUP_DELAY` | `10` | Sekunden Wartezeit nach dem Start vor dem ersten Zyklus |
 | `MEMORY_CHUNK_SIZE` | `1000000` | Bytes pro Speicher-Chunk im OOM-Szenario (1 MB) |
 | `DISK_FILL_SIZE_MB` | `110` | Größe der Junk-Datei für das DISK_FILL-Szenario in MB |
+| `DISK_FILL_PATH` | `/tmp` | Verzeichnis für die Junk-Datei `chaos_junk-<hostname>.bin`, im Chart aus `volume.mountPath` gesetzt |
 | `CPU_BURN_WORKERS` | `2` | Anzahl paralleler Prozesse im CPU_BURN-Szenario (je ein Kern) |
 | `CPU_BURN_DURATION` | `120` | Sekunden Dauer des CPU-Burns (empfohlen: max. CHAOS_INTERVAL / 2) |
 | `SLOW_RESPONSE_DELAY` | `5` | Sekunden künstliche Verzögerung pro Request im SLOW_RESPONSE-Szenario |

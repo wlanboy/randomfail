@@ -12,6 +12,7 @@ metadata:
   name: {{ .Values.deploymentName }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 2
   {{- if and $usePvc (not $pvcShared) }}
   # RWO-Volume: alter Pod muss das Volume freigeben, bevor der neue startet
   strategy:
@@ -75,6 +76,8 @@ spec:
               value: {{ .Values.chaos.readinessFlapInterval | int | quote }}
             - name: FD_EXHAUSTION_LIMIT
               value: {{ .Values.chaos.fdExhaustionLimit | int | quote }}
+            - name: DISK_FILL_PATH
+              value: {{ .Values.volume.mountPath | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
           securityContext:

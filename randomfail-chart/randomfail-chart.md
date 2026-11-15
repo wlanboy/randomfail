@@ -44,7 +44,7 @@ fehlen.
 | `service.type` | Service-Typ | `ClusterIP` |
 | `service.port` / `service.targetPort` | Service- und Container-Port | `8080` |
 | `volume.type` | Volume für `/tmp`: `pvc` oder `emptyDir` | `pvc` |
-| `volume.mountPath` | Mountpfad des `/tmp`-Volumes im Container | `/tmp` |
+| `volume.mountPath` | Mountpfad des Volumes im Container, wird als `DISK_FILL_PATH` an die App übergeben | `/tmp` |
 | `volume.emptyDir.sizeLimit` / `volume.emptyDir.medium` | emptyDir-Einstellungen (nur bei `volume.type: emptyDir`) | `100Mi`, `""` |
 | `pvc.name` / `pvc.accessModes` / `pvc.storageClassName` / `pvc.size` | PVC-Einstellungen (nur bei `volume.type: pvc`) | `randomfail-tmp-pvc`, `[ReadWriteOnce]`, `""`, `100Mi` |
 | `terminationGracePeriodSeconds` | Explizite Grace Period; leer = `chaos.sigtermDelay + terminationGraceBuffer` | leer |
@@ -71,7 +71,9 @@ fehlen.
   Neustart gefüllt. Mit `ReadWriteOnce` ist nur `replicaCount: 1` erlaubt (sonst
   bricht das Rendering mit einer Fehlermeldung ab), und das Deployment nutzt
   `strategy: Recreate`, damit beim Rolling Update auf einen anderen Node kein
-  Multi-Attach-Fehler entsteht. Mehrere Replicas brauchen `ReadWriteMany`.
+  Multi-Attach-Fehler entsteht. Mehrere Replicas brauchen `ReadWriteMany`. Jeder
+  Pod schreibt dabei in eine eigene Datei `chaos_junk-<pod>.bin`, ein Reset in einem
+  Pod lässt die Dateien der anderen stehen.
 - **`volume.type: emptyDir`** – `DISK_FILL` überschreitet `sizeLimit`, der Kubelet
   evicted den Pod (`kubectl get pod` → `Evicted`, Event `ephemeral local storage
   usage exceeds the total limit`). Funktioniert mit beliebig vielen Replicas.
