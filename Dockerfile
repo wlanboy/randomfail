@@ -1,4 +1,4 @@
-ARG PYTHON_TAG=3.14-slim
+ARG PYTHON_TAG=3.15-slim
 
 # Build stage
 FROM python:${PYTHON_TAG} AS builder
@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.title="randomfail" \
       org.opencontainers.image.source="https://github.com/wlanboy/randomfail" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.base.name="python:3.14-slim"
+      org.opencontainers.image.base.name="python:3.15-slim"
 
 # Verhindert, dass Python .pyc Dateien schreibt und sorgt für sofortige Log-Ausgabe
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/opt/venv/bin:$PATH"
